@@ -3,7 +3,7 @@ import { HEB_DAYS, HOLIDAY_TYPES, ISRAELI_HOLIDAYS, DEFAULT_SETTINGS, STORAGE_KE
 import { ymd, parseYmd, fmtHours } from '../utils/date';
 import { loadJSON, saveJSON } from '../utils/storage';
 
-export default function AdminSettings({ settings, setSettings, users, setUsers, currentUser }) {
+export default function AdminSettings({ settings, setSettings, users, setUsers, currentUser, auth }) {
   const [sh, setSh] = useState(settings.standardHours);
   const [hh, setHh] = useState(settings.holidayHours || DEFAULT_SETTINGS.holidayHours);
   const [overrideDate, setOverrideDate] = useState(ymd(new Date()));
@@ -88,6 +88,8 @@ export default function AdminSettings({ settings, setSettings, users, setUsers, 
   };
 
   const overrideList = Object.entries(settings.overrides || {}).sort((a, b) => b[0].localeCompare(a[0]));
+  const pendingUsers = users.filter(u => u.status === 'pending');
+  const activeUsers = users.filter(u => u.status !== 'pending');
 
   const todayKey = ymd(new Date());
   const disabled = settings.disabledHolidays || [];
@@ -97,6 +99,47 @@ export default function AdminSettings({ settings, setSettings, users, setUsers, 
   return (
     <div>
       {flash && <div className="form-success" style={{ marginBottom: 16 }}>{flash}</div>}
+
+      {/* ===== Pending users approval ===== */}
+      {pendingUsers.length > 0 && (
+        <div className="card" style={{ marginBottom: 20, border: '1px solid #fcd34d', background: 'var(--warning-soft)' }}>
+          <div className="card-title">
+            <span>⏳ משתמשים ממתינים לאישור</span>
+            <span className="count">{pendingUsers.length} ממתינים</span>
+          </div>
+          <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
+            משתמשים אלו נרשמו למערכת אך טרם אושרו. אשר כדי לאפשר כניסה.
+          </div>
+          <div className="table-wrap">
+            <table className="data">
+              <thead>
+                <tr><th>שם</th><th>שם משתמש</th><th>תאריך הרשמה</th><th style={{ textAlign: 'left' }}>פעולות</th></tr>
+              </thead>
+              <tbody>
+                {pendingUsers.map(u => (
+                  <tr key={u.id}>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div className="user-avatar" style={{ width: 28, height: 28, fontSize: 12 }}>{u.name.charAt(0)}</div>
+                        {u.name}
+                      </div>
+                    </td>
+                    <td style={{ color: 'var(--text-muted)' }} dir="ltr">{u.username}</td>
+                    <td style={{ color: 'var(--text-muted)', fontSize: 13 }}>{new Date(u.createdAt).toLocaleDateString('he-IL')}</td>
+                    <td>
+                      <div className="actions-inline">
+                        <button className="btn btn-primary btn-sm" onClick={() => auth.approveUser(u.id)}>אישור ✓</button>
+                        <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => { if (confirm('לדחות ולמחוק את המשתמש?')) auth.rejectUser(u.id); }}>דחייה ✗</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
 
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-title">תקן שעות שבועי</div>
@@ -269,16 +312,16 @@ export default function AdminSettings({ settings, setSettings, users, setUsers, 
 
       <div className="card">
         <div className="card-title">
-          ניהול משתמשים
-          <span className="count">{users.length} משתמשים</span>
+          ניהול משתמשים פעילים
+          <span className="count">{activeUsers.length} משתמשים</span>
         </div>
         <div className="table-wrap">
           <table className="data">
             <thead>
-              <tr><th>שם</th><th>שם משתמש</th><th>תפקיד</th><th>תאריך הצטרפות</th><th style={{ textAlign: 'left' }}>פעולות</th></tr>
+              <tr><th>שם</th><th>שם משתמש</th><th>תפקיד</th><th>2FA</th><th>תאריך הצטרפות</th><th style={{ textAlign: 'left' }}>פעולות</th></tr>
             </thead>
             <tbody>
-              {users.map(u => (
+              {activeUsers.map(u => (
                 <tr key={u.id}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -292,6 +335,11 @@ export default function AdminSettings({ settings, setSettings, users, setUsers, 
                     {u.role === 'admin'
                       ? <span className="pill pill-warning">מנהל</span>
                       : <span className="pill pill-muted">עובד</span>}
+                  </td>
+                  <td>
+                    {u.twoFactorSecret
+                      ? <span className="pill pill-success">מופעל</span>
+                      : <span className="pill pill-muted">כבוי</span>}
                   </td>
                   <td style={{ color: 'var(--text-muted)', fontSize: 13 }}>
                     {new Date(u.createdAt).toLocaleDateString('he-IL')}

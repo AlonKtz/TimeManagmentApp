@@ -7,6 +7,7 @@ import LoginScreen from './components/LoginScreen';
 import Dashboard from './components/Dashboard';
 import EntriesTab from './components/EntriesTab';
 import AdminSettings from './components/AdminSettings';
+import AccountSettings from './components/AccountSettings';
 
 export default function App() {
   const auth = useAuth();
@@ -71,11 +72,17 @@ export default function App() {
     setActivePunches({ ...activePunches, [user.id]: { ...activePunch, start: newStartIso } });
   };
 
+  const pendingCount = auth.users.filter(u => u.status === 'pending').length;
+
   const tabs = [
     { id: 'dashboard', label: 'מסך ראשי' },
     { id: 'entries', label: 'השעות שלי' },
+    { id: 'account', label: 'החשבון שלי' },
   ];
-  if (user.role === 'admin') tabs.push({ id: 'admin', label: 'הגדרות וניהול' });
+  if (user.role === 'admin') tabs.push({
+    id: 'admin',
+    label: pendingCount > 0 ? `הגדרות וניהול (${pendingCount})` : 'הגדרות וניהול',
+  });
 
   return (
     <div className="app">
@@ -121,8 +128,11 @@ export default function App() {
       {tab === 'entries' && (
         <EntriesTab user={user} entries={entries} setEntries={setEntries} settings={settings} />
       )}
+      {tab === 'account' && (
+        <AccountSettings user={user} auth={auth} />
+      )}
       {tab === 'admin' && user.role === 'admin' && (
-        <AdminSettings settings={settings} setSettings={setSettings} users={auth.users} setUsers={auth.setUsers} currentUser={user} />
+        <AdminSettings settings={settings} setSettings={setSettings} users={auth.users} setUsers={auth.setUsers} currentUser={user} auth={auth} />
       )}
     </div>
   );
