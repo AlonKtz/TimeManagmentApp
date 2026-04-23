@@ -1,0 +1,2579 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>מעקב שעות צוות</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f5f4;
+    --surface: #ffffff;
+    --surface-2: #fafaf9;
+    --border: #e7e5e4;
+    --border-strong: #d6d3d1;
+    --text: #1c1917;
+    --text-muted: #78716c;
+    --text-soft: #a8a29e;
+    --primary: #0f766e;
+    --primary-hover: #115e59;
+    --primary-soft: #ccfbf1;
+    --danger: #dc2626;
+    --danger-soft: #fee2e2;
+    --warning: #d97706;
+    --warning-soft: #fef3c7;
+    --success: #16a34a;
+    --success-soft: #dcfce7;
+    --info: #2563eb;
+    --info-soft: #dbeafe;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --radius-lg: 14px;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Heebo", "Arial Hebrew", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    background: none;
+  }
+
+  input, select, textarea {
+    font-family: inherit;
+    font-size: inherit;
+  }
+
+  input[type="text"],
+  input[type="password"],
+  input[type="number"],
+  input[type="date"],
+  input[type="time"],
+  select {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  /* Custom 24h time input: two numeric fields (HH and MM) */
+  .t24 {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    width: 100%;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    direction: ltr;
+  }
+  .t24:focus-within {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.15);
+  }
+  .t24 input {
+    width: 3ch;
+    min-width: 0;
+    padding: 5px 2px;
+    border: none;
+    background: transparent;
+    font-size: 15px;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    font-family: inherit;
+    color: var(--text);
+  }
+  .t24 input:focus { outline: none; }
+  .t24 input::placeholder { color: var(--text-soft); }
+  .t24 .t24-sep {
+    color: var(--text-muted);
+    font-weight: 500;
+    user-select: none;
+    padding: 0 1px;
+  }
+  .t24 .t24-hint {
+    margin-inline-start: auto;
+    font-size: 11px;
+    color: var(--text-soft);
+    letter-spacing: 0.5px;
+  }
+
+  input:focus, select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.15);
+  }
+
+  .app {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+
+  /* ===== Top bar ===== */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 20px;
+    box-shadow: var(--shadow-sm);
+  }
+  .topbar-title {
+    font-size: 18px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .topbar-title .logo {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    background: var(--primary);
+    color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .topbar-user {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .user-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: var(--text-muted);
+  }
+  .user-avatar {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: var(--primary-soft);
+    color: var(--primary-hover);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .admin-badge {
+    background: var(--warning-soft);
+    color: var(--warning);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  /* ===== Tabs ===== */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--surface);
+    padding: 4px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    margin-bottom: 20px;
+    overflow-x: auto;
+  }
+  .tab {
+    flex: 1;
+    min-width: max-content;
+    padding: 10px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-align: center;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .tab:hover:not(.active) { background: var(--surface-2); color: var(--text); }
+  .tab.active { background: var(--primary); color: white; }
+
+  /* ===== Cards ===== */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: var(--shadow-sm);
+  }
+  .card + .card { margin-top: 16px; }
+  .card-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 16px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .card-title span.count {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+
+  /* ===== Buttons ===== */
+  .btn {
+    padding: 9px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-primary {
+    background: var(--primary);
+    color: white;
+  }
+  .btn-primary:hover { background: var(--primary-hover); }
+  .btn-primary:disabled {
+    background: var(--border-strong);
+    cursor: not-allowed;
+  }
+  .btn-secondary {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+  }
+  .btn-secondary:hover { background: var(--surface-2); }
+  .btn-danger {
+    background: var(--danger-soft);
+    color: var(--danger);
+  }
+  .btn-danger:hover { background: #fecaca; }
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-muted);
+    padding: 6px 10px;
+  }
+  .btn-ghost:hover { background: var(--surface-2); color: var(--text); }
+  .btn-sm { padding: 6px 12px; font-size: 13px; }
+  .btn-lg { padding: 14px 20px; font-size: 16px; }
+  .btn-block { width: 100%; justify-content: center; }
+
+  /* ===== Login ===== */
+  .login-wrapper {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .login-card {
+    width: 100%;
+    max-width: 400px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 32px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+  }
+  .login-logo {
+    width: 56px; height: 56px;
+    border-radius: 14px;
+    background: var(--primary);
+    color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px;
+    margin: 0 auto 16px;
+  }
+  .login-title {
+    text-align: center;
+    font-size: 22px;
+    font-weight: 700;
+    margin: 0 0 4px;
+  }
+  .login-subtitle {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 14px;
+    margin: 0 0 24px;
+  }
+  .form-group {
+    margin-bottom: 16px;
+  }
+  .form-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+  .form-error {
+    background: var(--danger-soft);
+    color: var(--danger);
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+
+  /* Password field with toggle eye button */
+  .pwd-wrap {
+    position: relative;
+  }
+  .pwd-wrap input {
+    padding-left: 40px; /* space for eye on the left since dir is rtl */
+  }
+  .pwd-toggle {
+    position: absolute;
+    left: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    transition: all 0.15s;
+  }
+  .pwd-toggle:hover { background: var(--surface-2); color: var(--text); }
+  .pwd-toggle:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
+  .form-success {
+    background: var(--success-soft);
+    color: var(--success);
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .toggle-auth {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .toggle-auth button {
+    color: var(--primary);
+    font-weight: 500;
+    padding: 0 4px;
+  }
+
+  /* ===== Stats grid ===== */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 640px) {
+    .stats-grid { grid-template-columns: 1fr; }
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    box-shadow: var(--shadow-sm);
+  }
+  .stat-label {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+  .stat-value {
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.1;
+    margin-bottom: 6px;
+  }
+  .stat-target {
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .stat-bar {
+    margin-top: 12px;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .stat-bar-fill {
+    height: 100%;
+    background: var(--primary);
+    transition: width 0.4s;
+    border-radius: 3px;
+  }
+  .stat-bar-fill.complete { background: var(--success); }
+  .stat-bar-fill.over { background: var(--warning); }
+  .stat-diff {
+    font-size: 13px;
+    margin-top: 10px;
+    font-weight: 500;
+  }
+  .stat-diff.positive { color: var(--success); }
+  .stat-diff.negative { color: var(--danger); }
+
+  /* ===== Punch-in panel ===== */
+  .punch-panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: stretch;
+  }
+  @media (max-width: 640px) {
+    .punch-panel { grid-template-columns: 1fr; }
+  }
+  .punch-status {
+    padding: 18px;
+    border-radius: var(--radius);
+    background: var(--surface-2);
+  }
+  .punch-status.active {
+    background: var(--success-soft);
+    border: 1px solid #bbf7d0;
+  }
+  .punch-status-label {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  .punch-status-time {
+    font-size: 28px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .punch-status-sub {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  /* Location segmented control */
+  .loc-segment {
+    display: inline-flex;
+    gap: 0;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 3px;
+    margin-top: 10px;
+  }
+  .loc-segment button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: var(--text-muted);
+    border-radius: 4px;
+    font-weight: 500;
+    transition: all 0.15s;
+  }
+  .loc-segment button.active {
+    background: var(--primary);
+    color: white;
+  }
+  .loc-segment button:not(.active):hover {
+    background: var(--surface-2);
+    color: var(--text);
+  }
+  .loc-segment button svg {
+    width: 14px; height: 14px;
+  }
+
+  /* Location pill on entries */
+  .loc-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .loc-pill.office { background: var(--info-soft); color: var(--info); }
+  .loc-pill.home { background: var(--primary-soft); color: var(--primary-hover); }
+  .loc-pill svg { width: 12px; height: 12px; }
+
+  /* Small "edit time" link inside punch status */
+  .edit-time-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-right: 8px;
+    font-size: 12px;
+    color: var(--primary);
+    font-weight: 500;
+  }
+  .edit-time-link:hover { text-decoration: underline; }
+
+  /* ===== Tables ===== */
+  .table-wrap {
+    overflow-x: auto;
+    margin: -4px;
+    padding: 4px;
+  }
+  table.data {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  table.data th {
+    text-align: right;
+    padding: 10px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+    white-space: nowrap;
+  }
+  table.data td {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  table.data tr:last-child td { border-bottom: none; }
+  table.data tr:hover td { background: var(--surface-2); }
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .pill-success { background: var(--success-soft); color: var(--success); }
+  .pill-warning { background: var(--warning-soft); color: var(--warning); }
+  .pill-danger  { background: var(--danger-soft); color: var(--danger); }
+  .pill-info    { background: var(--info-soft); color: var(--info); }
+  .pill-muted   { background: var(--surface-2); color: var(--text-muted); }
+
+  /* ===== Form rows ===== */
+  .form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .form-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+  }
+
+  /* ===== Modal ===== */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(28, 25, 23, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 20px;
+  }
+  .modal {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    width: 100%;
+    max-width: 480px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .modal-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 20px 0;
+  }
+
+  /* ===== Empty state ===== */
+  .empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+  }
+  .empty-icon {
+    width: 48px; height: 48px;
+    margin: 0 auto 12px;
+    border-radius: 50%;
+    background: var(--surface-2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+  .empty-title { font-size: 15px; font-weight: 500; color: var(--text); margin-bottom: 4px;}
+  .empty-text { font-size: 13px; }
+
+  /* ===== Actions row ===== */
+  .actions-inline {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+  .icon-btn {
+    width: 30px; height: 30px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    transition: all 0.15s;
+  }
+  .icon-btn:hover { background: var(--surface-2); color: var(--text); }
+  .icon-btn.danger:hover { background: var(--danger-soft); color: var(--danger); }
+
+  /* ===== Month picker ===== */
+  .period-nav {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .period-nav .current {
+    flex: 1;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .nav-btn {
+    width: 36px; height: 36px;
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text);
+  }
+  .nav-btn:hover { background: var(--surface-2); }
+
+  /* ===== Admin section ===== */
+  .admin-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .admin-section-title {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .admin-day-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+  }
+  .admin-day-card {
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+  }
+  .admin-day-card.holiday {
+    background: var(--warning-soft);
+    border-color: #fcd34d;
+  }
+  .day-name { font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+  .day-name .edit { color: var(--text-muted); font-size: 12px; font-weight: 400; }
+  .day-hours-input { display: flex; align-items: center; gap: 6px; }
+  .day-hours-input input { width: 70px; padding: 6px 8px; text-align: center; }
+  .day-hours-input span { font-size: 13px; color: var(--text-muted); }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .chip.success { background: var(--success-soft); color: var(--success); border-color: transparent; }
+
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 20px 0;
+  }
+
+  .row-between { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+  .hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 6px;
+  }
+
+  /* Scrollbar polish */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-soft); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo, useRef } = React;
+
+// ===================== Storage helpers =====================
+const STORAGE_KEYS = {
+  users: 'tt_users',
+  session: 'tt_session',
+  entries: 'tt_entries',          // { userId: [entries] }
+  settings: 'tt_settings',        // { standardHours: {0..4}, overrides: { 'YYYY-MM-DD': hours } }
+  activePunch: 'tt_active_punch', // { userId: { start: iso } }
+};
+
+const loadJSON = (k, fallback) => {
+  try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; }
+  catch { return fallback; }
+};
+const saveJSON = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+
+// ===================== Date helpers =====================
+const HEB_DAYS = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+const HEB_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+
+// Work location options
+const LOCATIONS = {
+  office: { label: 'מהמשרד', icon: 'office' },
+  home:   { label: 'מהבית',  icon: 'home' },
+};
+const DEFAULT_LOCATION = 'office';
+
+function ymd(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function parseYmd(s) {
+  const [y,m,d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+function startOfWeek(d) {
+  // Sunday = 0 in JS, week starts Sunday
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const dow = x.getDay();
+  x.setDate(x.getDate() - dow);
+  return x;
+}
+function endOfWeek(d) {
+  const s = startOfWeek(d);
+  const e = new Date(s);
+  e.setDate(e.getDate() + 4); // Sun..Thu, ends Thursday
+  return e;
+}
+function daysInRange(from, to) {
+  const out = [];
+  const cur = new Date(from);
+  while (cur <= to) {
+    out.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
+}
+function fmtHours(h) {
+  if (isNaN(h) || h === null || h === undefined) return '0:00';
+  const sign = h < 0 ? '-' : '';
+  const abs = Math.abs(h);
+  const hh = Math.floor(abs);
+  const mm = Math.round((abs - hh) * 60);
+  if (mm === 60) return `${sign}${hh+1}:00`;
+  return `${sign}${hh}:${String(mm).padStart(2,'0')}`;
+}
+// Always returns HH:MM in 24-hour format, regardless of locale.
+function fmtTime24(date) {
+  if (!date) return '--:--';
+  const d = date instanceof Date ? date : new Date(date);
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+// Same but for a HH:MM string — normalizes to always have leading zeros.
+function normalizeTimeStr(t) {
+  if (!t) return '';
+  const [h, m] = t.split(':').map(s => parseInt(s, 10));
+  if (isNaN(h) || isNaN(m)) return t;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+function timeStrToHours(t) {
+  if (!t) return 0;
+  const [h,m] = t.split(':').map(Number);
+  return h + (m || 0) / 60;
+}
+function diffHours(startIso, endIso) {
+  return (new Date(endIso) - new Date(startIso)) / 3600000;
+}
+
+// ===================== Defaults =====================
+// Holiday types and their default hours
+// Admin can edit these in one place and all dates of that type update.
+const HOLIDAY_TYPES = {
+  chag: { label: 'חג', defaultHours: 0 },
+  erev: { label: 'ערב חג', defaultHours: 5 },
+  cholhamoed: { label: 'חול המועד', defaultHours: 6 },
+  memorial: { label: 'יום הזיכרון (ערב יום העצמאות)', defaultHours: 5 },
+};
+
+// Full Israeli holiday calendar for 2026 (תשפ"ו-תשפ"ז)
+// Only weekdays (Sun-Thu) are included because Fri/Sat are non-workdays anyway.
+// Each entry: { type: 'chag'|'erev'|'cholhamoed'|'memorial', note: string }
+const ISRAELI_HOLIDAYS = {
+  // === פסח תשפ"ו ===
+  '2026-04-01': { type: 'erev',       note: 'ערב פסח' },
+  '2026-04-02': { type: 'chag',       note: 'פסח — חג ראשון' },
+  // 2026-04-03 Friday, 2026-04-04 Shabbat (skipped — non-workday)
+  '2026-04-05': { type: 'cholhamoed', note: 'חול המועד פסח' },
+  '2026-04-06': { type: 'cholhamoed', note: 'חול המועד פסח' },
+  '2026-04-07': { type: 'erev',       note: 'ערב שביעי של פסח' },
+  '2026-04-08': { type: 'chag',       note: 'שביעי של פסח' },
+
+  // === יום הזיכרון ויום העצמאות ===
+  '2026-04-20': { type: 'memorial',   note: 'ערב יום הזיכרון' },
+  '2026-04-21': { type: 'memorial',   note: 'יום הזיכרון (ערב יום העצמאות)' },
+  '2026-04-22': { type: 'chag',       note: 'יום העצמאות' },
+
+  // === ל"ג בעומר ===
+  // 2026-05-05 יום ג' — לא חופשה רשמית, לא מוגדר
+
+  // === שבועות ===
+  '2026-05-20': { type: 'erev',       note: 'ערב שבועות' },
+  '2026-05-21': { type: 'chag',       note: 'שבועות' },
+
+  // === תשעה באב ===
+  // 2026-07-22 ד', 2026-07-23 ה' — לא חופשה רשמית, לא מוגדר
+
+  // === ראש השנה תשפ"ז ===
+  // 2026-09-11 יום ו' — ערב ראש השנה (שישי ממילא)
+  // 2026-09-12 שבת — ראש השנה א' (שבת ממילא)
+  '2026-09-13': { type: 'chag',       note: 'ראש השנה תשפ"ז — חג שני' },
+
+  // === יום כיפור ===
+  '2026-09-20': { type: 'erev',       note: 'ערב יום כיפור' },
+  '2026-09-21': { type: 'chag',       note: 'יום כיפור' },
+
+  // === סוכות ===
+  // 2026-09-25 יום ו' — ערב סוכות (שישי ממילא)
+  // 2026-09-26 שבת — סוכות א' (שבת ממילא)
+  '2026-09-27': { type: 'cholhamoed', note: 'חול המועד סוכות' },
+  '2026-09-28': { type: 'cholhamoed', note: 'חול המועד סוכות' },
+  '2026-09-29': { type: 'cholhamoed', note: 'חול המועד סוכות' },
+  '2026-09-30': { type: 'cholhamoed', note: 'חול המועד סוכות' },
+  '2026-10-01': { type: 'erev',       note: 'ערב שמחת תורה (הושענא רבה)' },
+  // 2026-10-02 יום ו' — שמחת תורה (שישי ממילא בישראל זה שמ"ע+שמח"ת)
+
+  // === חנוכה תשפ"ז — לא חופשה רשמית ===
+};
+
+const DEFAULT_SETTINGS = {
+  // 0=Sunday, 1=Mon, 2=Tue, 3=Wed, 4=Thu
+  standardHours: { 0: 9, 1: 9, 2: 9, 3: 9, 4: 8.5 },
+  // Hours for each holiday type (editable by admin)
+  holidayHours: {
+    chag: 0,
+    erev: 5,
+    cholhamoed: 6,
+    memorial: 5,
+  },
+  // Manual overrides for specific dates: 'YYYY-MM-DD': { hours, note }
+  overrides: {},
+  // Disabled holiday dates (admin removed them): Set of 'YYYY-MM-DD'
+  disabledHolidays: [],
+};
+
+// ===================== Business logic =====================
+// Returns the "holiday info" for a date, considering built-in holidays,
+// disabled list, and manual overrides. Returns null if it's a regular day.
+function getHolidayInfo(date, settings) {
+  const key = ymd(date);
+  // Manual override wins
+  const ov = settings.overrides?.[key];
+  if (ov) {
+    return { source: 'override', hours: ov.hours, note: ov.note, type: ov.type || 'custom' };
+  }
+  // Built-in Israeli holiday (if not disabled by admin)
+  const disabled = settings.disabledHolidays || [];
+  if (disabled.includes(key)) return null;
+  const h = ISRAELI_HOLIDAYS[key];
+  if (h) {
+    const hours = settings.holidayHours?.[h.type] ?? HOLIDAY_TYPES[h.type].defaultHours;
+    return { source: 'builtin', hours, note: h.note, type: h.type };
+  }
+  return null;
+}
+
+function getDailyTarget(date, settings) {
+  const info = getHolidayInfo(date, settings);
+  if (info) return info.hours;
+  const dow = date.getDay();
+  if (dow === 5 || dow === 6) return 0; // Fri/Sat are not workdays
+  return settings.standardHours?.[dow] ?? 0;
+}
+
+function getWorkedOnDate(entries, date) {
+  const key = ymd(date);
+  return entries
+    .filter(e => e.date === key)
+    .reduce((sum, e) => sum + (e.hours || 0), 0);
+}
+
+function getRangeStats(entries, settings, from, to) {
+  const days = daysInRange(from, to);
+  let target = 0, worked = 0;
+  for (const d of days) {
+    target += getDailyTarget(d, settings);
+    worked += getWorkedOnDate(entries, d);
+  }
+  return { target, worked, diff: worked - target };
+}
+
+function sessionDuration(session) {
+  if (!session) return 0;
+  const end = session.end ? new Date(session.end) : new Date();
+  return (end - new Date(session.start)) / 3600000;
+}
+
+// ===================== Auth =====================
+function hashPwd(pwd) {
+  // Simple hash - not secure, but reasonable for a local demo app
+  let h = 0;
+  for (let i = 0; i < pwd.length; i++) {
+    h = ((h << 5) - h) + pwd.charCodeAt(i);
+    h |= 0;
+  }
+  return String(h);
+}
+
+function useAuth() {
+  const [users, setUsers] = useState(() => loadJSON(STORAGE_KEYS.users, []));
+  const [session, setSession] = useState(() => loadJSON(STORAGE_KEYS.session, null));
+
+  useEffect(() => saveJSON(STORAGE_KEYS.users, users), [users]);
+  useEffect(() => {
+    if (session) saveJSON(STORAGE_KEYS.session, session);
+    else localStorage.removeItem(STORAGE_KEYS.session);
+  }, [session]);
+
+  const register = ({ username, password, name }) => {
+    const u = username.trim().toLowerCase();
+    if (!u || !password || !name.trim()) return { error: 'נא למלא את כל השדות' };
+    if (u.length < 3) return { error: 'שם המשתמש חייב להיות לפחות 3 תווים' };
+    if (password.length < 4) return { error: 'הסיסמה חייבת להיות לפחות 4 תווים' };
+    if (users.find(x => x.username === u)) return { error: 'שם המשתמש כבר קיים' };
+    const isFirst = users.length === 0;
+    const newUser = {
+      id: 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+      username: u,
+      passwordHash: hashPwd(password),
+      name: name.trim(),
+      role: isFirst ? 'admin' : 'user',
+      createdAt: new Date().toISOString(),
+    };
+    setUsers(prev => [...prev, newUser]);
+    setSession({ userId: newUser.id });
+    return { ok: true, firstAdmin: isFirst };
+  };
+
+  const login = ({ username, password }) => {
+    const u = username.trim().toLowerCase();
+    const user = users.find(x => x.username === u);
+    if (!user) return { error: 'שם משתמש או סיסמה שגויים' };
+    if (user.passwordHash !== hashPwd(password)) return { error: 'שם משתמש או סיסמה שגויים' };
+    setSession({ userId: user.id });
+    return { ok: true };
+  };
+
+  const logout = () => setSession(null);
+
+  const currentUser = useMemo(
+    () => users.find(u => u.id === session?.userId) || null,
+    [users, session]
+  );
+
+  return { users, setUsers, currentUser, register, login, logout };
+}
+
+// ===================== Login screen =====================
+// Location icon (office building or house)
+function LocationIcon({ loc }) {
+  if (loc === 'home') {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+        <polyline points="9 22 9 12 15 12 15 22"/>
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="2" width="16" height="20" rx="1"/>
+      <line x1="8" y1="6" x2="8" y2="6"/>
+      <line x1="12" y1="6" x2="12" y2="6"/>
+      <line x1="16" y1="6" x2="16" y2="6"/>
+      <line x1="8" y1="10" x2="8" y2="10"/>
+      <line x1="12" y1="10" x2="12" y2="10"/>
+      <line x1="16" y1="10" x2="16" y2="10"/>
+      <line x1="8" y1="14" x2="8" y2="14"/>
+      <line x1="12" y1="14" x2="12" y2="14"/>
+      <line x1="16" y1="14" x2="16" y2="14"/>
+      <path d="M10 22v-4h4v4"/>
+    </svg>
+  );
+}
+
+// Location toggle (segmented control)
+function LocationToggle({ value, onChange }) {
+  return (
+    <div className="loc-segment" role="group" aria-label="מיקום עבודה">
+      {Object.entries(LOCATIONS).map(([key, meta]) => (
+        <button
+          key={key}
+          type="button"
+          className={value === key ? 'active' : ''}
+          onClick={() => onChange(key)}
+          aria-pressed={value === key}
+        >
+          <LocationIcon loc={key} />
+          {meta.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Small pill showing location on an entry
+function LocationPill({ loc }) {
+  if (!loc || !LOCATIONS[loc]) return null;
+  return (
+    <span className={`loc-pill ${loc}`}>
+      <LocationIcon loc={loc} />
+      {LOCATIONS[loc].label}
+    </span>
+  );
+}
+
+// Custom 24-hour time input — uncontrolled internals.
+// React does NOT control the input values during typing.
+// The parent receives updates only on blur or when both fields are filled.
+function Time24Input({ value, onChange, required, id }) {
+  const hRef = useRef(null);
+  const mRef = useRef(null);
+  // Track the last external value we've synced — only sync when parent
+  // changes the value from outside (e.g. editEntry loading an existing record).
+  const lastExternal = useRef(value);
+
+  useEffect(() => {
+    if (value !== lastExternal.current) {
+      lastExternal.current = value;
+      const [h2, m2] = (value || '').split(':');
+      if (hRef.current) hRef.current.value = h2 ?? '';
+      if (mRef.current) mRef.current.value = m2 ?? '';
+    }
+  }, [value]);
+
+  // Set initial DOM value once on mount
+  useEffect(() => {
+    const [h2, m2] = (value || '').split(':');
+    if (hRef.current) hRef.current.value = h2 ?? '';
+    if (mRef.current) mRef.current.value = m2 ?? '';
+    // eslint-disable-next-line
+  }, []);
+
+  const clamp = (n, max) => Math.min(max, Math.max(0, parseInt(n, 10) || 0));
+  const pad = n => String(n).padStart(2, '0');
+
+  const emit = () => {
+    const h = pad(clamp(hRef.current?.value ?? 0, 23));
+    const m = pad(clamp(mRef.current?.value ?? 0, 59));
+    lastExternal.current = `${h}:${m}`;
+    onChange(`${h}:${m}`);
+  };
+
+  const onHourInput = (e) => {
+    // Strip non-digits
+    const raw = e.target.value.replace(/\D/g, '').slice(0, 2);
+    e.target.value = raw;
+    // Auto-jump to minutes only when user has typed exactly 2 digits
+    if (raw.length === 2) {
+      mRef.current?.focus();
+      mRef.current?.select();
+      emit();
+    }
+  };
+
+  const onHourBlur = () => {
+    if (!hRef.current?.value) return;
+    hRef.current.value = pad(clamp(hRef.current.value, 23));
+    emit();
+  };
+
+  const onMinuteInput = (e) => {
+    const raw = e.target.value.replace(/\D/g, '').slice(0, 2);
+    e.target.value = raw;
+    if (raw.length === 2) emit();
+  };
+
+  const onMinuteBlur = () => {
+    if (!mRef.current?.value) return;
+    mRef.current.value = pad(clamp(mRef.current.value, 59));
+    emit();
+  };
+
+  const onMinuteKeyDown = (e) => {
+    if (e.key === 'Backspace' && mRef.current?.value === '') {
+      hRef.current?.focus();
+    }
+  };
+
+  return (
+    <div className="t24">
+      <input
+        ref={hRef}
+        id={id}
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        maxLength={2}
+        placeholder="HH"
+        defaultValue=""
+        onInput={onHourInput}
+        onBlur={onHourBlur}
+        onFocus={(e) => e.target.select()}
+        aria-label="שעה"
+        required={required}
+      />
+      <span className="t24-sep">:</span>
+      <input
+        ref={mRef}
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        maxLength={2}
+        placeholder="MM"
+        defaultValue=""
+        onInput={onMinuteInput}
+        onBlur={onMinuteBlur}
+        onKeyDown={onMinuteKeyDown}
+        onFocus={(e) => e.target.select()}
+        aria-label="דקות"
+        required={required}
+      />
+      <span className="t24-hint">24h</span>
+    </div>
+  );
+}
+
+// Password input with show/hide toggle
+function PasswordInput({ value, onChange, autoComplete, id, placeholder }) {
+  const [shown, setShown] = useState(false);
+  return (
+    <div className="pwd-wrap">
+      <input
+        id={id}
+        type={shown ? 'text' : 'password'}
+        value={value}
+        onChange={onChange}
+        autoComplete={autoComplete}
+        placeholder={placeholder}
+        dir="ltr"
+        style={{textAlign:'right'}}
+      />
+      <button
+        type="button"
+        className="pwd-toggle"
+        onClick={() => setShown(s => !s)}
+        aria-label={shown ? 'הסתר סיסמה' : 'הצג סיסמה'}
+        title={shown ? 'הסתר סיסמה' : 'הצג סיסמה'}
+        tabIndex={-1}
+      >
+        {shown ? (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+        ) : (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        )}
+      </button>
+    </div>
+  );
+}
+
+function LoginScreen({ auth }) {
+  const [mode, setMode] = useState('login'); // 'login' | 'register'
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+  const isFirstUser = auth.users.length === 0;
+
+  useEffect(() => {
+    if (isFirstUser) setMode('register');
+  }, [isFirstUser]);
+
+  const submit = (e) => {
+    e.preventDefault();
+    setError(''); setInfo('');
+    if (mode === 'login') {
+      const res = auth.login({ username, password });
+      if (res.error) setError(res.error);
+    } else {
+      const res = auth.register({ username, password, name });
+      if (res.error) setError(res.error);
+      else if (res.firstAdmin) setInfo('נרשמת כמנהל המערכת');
+    }
+  };
+
+  return (
+    <div className="login-wrapper">
+      <div className="login-card">
+        <div className="login-logo">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+        </div>
+        <h1 className="login-title">מעקב שעות צוות</h1>
+        <p className="login-subtitle">
+          {mode === 'login' ? 'התחברות למערכת' : (isFirstUser ? 'יצירת חשבון מנהל ראשון' : 'יצירת חשבון חדש')}
+        </p>
+
+        {error && <div className="form-error">{error}</div>}
+        {info && <div className="form-success">{info}</div>}
+        {isFirstUser && mode === 'register' && (
+          <div className="form-success">ברוך הבא! המשתמש הראשון הופך אוטומטית למנהל המערכת.</div>
+        )}
+
+        <form onSubmit={submit}>
+          {mode === 'register' && (
+            <div className="form-group">
+              <label className="form-label">שם מלא</label>
+              <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="ישראל ישראלי" autoComplete="name" />
+            </div>
+          )}
+          <div className="form-group">
+            <label className="form-label">שם משתמש</label>
+            <input type="text" value={username} onChange={e => setUsername(e.target.value)} placeholder="לדוגמה: yossi" autoComplete="username" dir="ltr" style={{textAlign:'right'}} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">סיסמה</label>
+            <PasswordInput
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+            />
+          </div>
+          <button type="submit" className="btn btn-primary btn-block btn-lg">
+            {mode === 'login' ? 'כניסה' : 'הרשמה'}
+          </button>
+        </form>
+
+        {!isFirstUser && (
+          <div className="toggle-auth">
+            {mode === 'login' ? (
+              <>אין לך חשבון?
+                <button type="button" onClick={() => { setMode('register'); setError(''); }}>הרשמה</button>
+              </>
+            ) : (
+              <>יש לך חשבון?
+                <button type="button" onClick={() => { setMode('login'); setError(''); }}>כניסה</button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ===================== Edit active punch modal =====================
+// Lets the user adjust the start time of their currently running session,
+// e.g. "I actually arrived at 9:00 but only clicked in at 9:17".
+function PunchEditModal({ activePunch, onSave, onClose }) {
+  const originalStart = new Date(activePunch.start);
+  const originalDate = ymd(originalStart);
+  const originalTime = fmtTime24(originalStart);
+
+  const [date, setDate] = useState(originalDate);
+  const [time, setTime] = useState(originalTime);
+  const [error, setError] = useState('');
+
+  const save = () => {
+    if (!time || !date) {
+      setError('נא למלא תאריך ושעה');
+      return;
+    }
+    const newStart = new Date(`${date}T${normalizeTimeStr(time)}:00`);
+    if (isNaN(newStart.getTime())) {
+      setError('תאריך או שעה לא תקינים');
+      return;
+    }
+    const now = new Date();
+    if (newStart > now) {
+      setError('שעת הכניסה לא יכולה להיות בעתיד');
+      return;
+    }
+    // Sanity: don't let people backdate more than 24 hours
+    const hoursAgo = (now - newStart) / 3600000;
+    if (hoursAgo > 24) {
+      if (!confirm('שעת הכניסה שהזנת היא יותר מ־24 שעות אחורה. להמשיך בכל זאת?')) return;
+    }
+    onSave(newStart.toISOString());
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-title">עריכת שעת כניסה</div>
+
+        <div style={{
+          padding: '10px 14px',
+          background: 'var(--surface-2)',
+          borderRadius: 'var(--radius-sm)',
+          marginBottom: 16,
+          fontSize: 13,
+        }}>
+          <div style={{color:'var(--text-muted)'}}>נרשמה כניסה בפועל ב־</div>
+          <div style={{fontWeight: 600, fontSize: 15, fontVariantNumeric: 'tabular-nums'}}>
+            {originalTime}, {originalStart.getDate()}.{originalStart.getMonth()+1}.{originalStart.getFullYear()}
+          </div>
+        </div>
+
+        {error && <div className="form-error">{error}</div>}
+
+        <div className="form-row">
+          <div>
+            <label className="form-label">תאריך</label>
+            <input type="date" value={date} onChange={e => { setDate(e.target.value); setError(''); }} />
+          </div>
+          <div>
+            <label className="form-label">שעת כניסה</label>
+            <Time24Input value={time} onChange={(v) => { setTime(v); setError(''); }} />
+            <div className="hint">פורמט 24 שעות, לדוגמה 09:15</div>
+          </div>
+        </div>
+
+        <div className="form-actions">
+          <button className="btn btn-primary" onClick={save}>שמירה</button>
+          <button className="btn btn-secondary" onClick={onClose}>ביטול</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===================== Target editor modal (admin) =====================
+// Lets admin edit or reset the target hours for a specific date.
+function TargetEditorModal({ date, settings, setSettings, onClose }) {
+  const d = parseYmd(date);
+  const holidayInfo = getHolidayInfo(d, settings);
+  const dow = d.getDay();
+  const isWeekend = dow === 5 || dow === 6;
+  const defaultHours = isWeekend ? 0 : (settings.standardHours?.[dow] ?? 0);
+  const currentTarget = getDailyTarget(d, settings);
+
+  const existingOverride = settings.overrides?.[date];
+  const builtinHoliday = ISRAELI_HOLIDAYS[date];
+  const isDisabledBuiltin = (settings.disabledHolidays || []).includes(date);
+
+  const [hours, setHours] = useState(String(currentTarget));
+  const [note, setNote] = useState(existingOverride?.note || '');
+
+  const save = () => {
+    const n = parseFloat(hours);
+    if (isNaN(n) || n < 0 || n > 24) {
+      alert('הזן מספר שעות תקין (בין 0 ל־24)');
+      return;
+    }
+    setSettings({
+      ...settings,
+      overrides: {
+        ...settings.overrides,
+        [date]: {
+          hours: n,
+          note: note.trim() || (builtinHoliday ? builtinHoliday.note : 'חריגה'),
+          type: 'custom',
+        }
+      }
+    });
+    onClose();
+  };
+
+  // "Reset" = remove this date's override and (if it was a builtin holiday that was disabled) re-enable it
+  const reset = () => {
+    const { [date]: _, ...restOverrides } = settings.overrides || {};
+    const next = { ...settings, overrides: restOverrides };
+    if (isDisabledBuiltin) {
+      next.disabledHolidays = (settings.disabledHolidays || []).filter(k => k !== date);
+    }
+    setSettings(next);
+    onClose();
+  };
+
+  // "Mark as regular workday" = disable the builtin holiday for this date AND remove any override
+  const markRegular = () => {
+    const { [date]: _, ...restOverrides } = settings.overrides || {};
+    const next = { ...settings, overrides: restOverrides };
+    if (builtinHoliday && !isDisabledBuiltin) {
+      next.disabledHolidays = [...(settings.disabledHolidays || []), date];
+    }
+    setSettings(next);
+    onClose();
+  };
+
+  // Source explanation for the current target
+  let sourceLabel, sourceDetail;
+  if (existingOverride) {
+    sourceLabel = 'חריגה מותאמת אישית';
+    sourceDetail = existingOverride.note || '—';
+  } else if (holidayInfo?.source === 'builtin') {
+    sourceLabel = HOLIDAY_TYPES[holidayInfo.type]?.label || 'חג';
+    sourceDetail = holidayInfo.note;
+  } else if (isWeekend) {
+    sourceLabel = 'סוף שבוע';
+    sourceDetail = 'ימי שישי ושבת אינם ימי עבודה';
+  } else {
+    sourceLabel = 'תקן יומי רגיל';
+    sourceDetail = `ברירת מחדל ליום ${HEB_DAYS[dow]}: ${fmtHours(defaultHours)}`;
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-title">
+          עריכת יעד ליום {HEB_DAYS[dow]}, {d.getDate()}.{d.getMonth()+1}.{d.getFullYear()}
+        </div>
+
+        <div style={{
+          padding: '12px 14px',
+          background: 'var(--surface-2)',
+          borderRadius: 'var(--radius-sm)',
+          marginBottom: 16,
+          fontSize: 13,
+        }}>
+          <div style={{color:'var(--text-muted)', marginBottom: 4}}>מקור היעד הנוכחי</div>
+          <div style={{fontWeight: 500}}>{sourceLabel} — {fmtHours(currentTarget)}</div>
+          <div style={{color:'var(--text-muted)', marginTop: 2}}>{sourceDetail}</div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">מספר שעות יעד</label>
+          <input
+            type="number" step="0.25" min="0" max="24"
+            value={hours}
+            onChange={e => setHours(e.target.value)}
+            autoFocus
+          />
+          <div className="hint">הזן 0 ליום חופש מלא. חריגה מותאמת אישית גוברת על כל הגדרה אחרת.</div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">תיאור (אופציונלי)</label>
+          <input
+            type="text"
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            placeholder="סיבה לשינוי, למשל: יום קצר, חצי חג, אירוע חברה..."
+          />
+        </div>
+
+        <div className="form-actions" style={{justifyContent: 'space-between'}}>
+          <div style={{display:'flex', gap: 8, flexWrap: 'wrap'}}>
+            <button className="btn btn-primary" onClick={save}>שמירה</button>
+            <button className="btn btn-secondary" onClick={onClose}>ביטול</button>
+          </div>
+          <div style={{display:'flex', gap: 8, flexWrap: 'wrap'}}>
+            {(existingOverride || isDisabledBuiltin) && (
+              <button className="btn btn-ghost btn-sm" onClick={reset} title="החזרה להגדרת ברירת המחדל">
+                איפוס לברירת מחדל
+              </button>
+            )}
+            {builtinHoliday && !isDisabledBuiltin && !existingOverride && (
+              <button className="btn btn-ghost btn-sm" onClick={markRegular} title="ביטול החג ליום זה בלבד">
+                סמן כיום עבודה רגיל
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===================== Dashboard =====================
+function Dashboard({ user, entries, settings, setSettings, activePunch, onPunch, onEditPunch }) {
+  const [now, setNow] = useState(new Date());
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [editingTargetDate, setEditingTargetDate] = useState(null); // 'YYYY-MM-DD' or null
+  const [editingPunch, setEditingPunch] = useState(false);
+  // Location for the *next* punch-in (or currently active punch, if any)
+  const [location, setLocation] = useState(() => activePunch?.location || DEFAULT_LOCATION);
+  const isAdmin = user.role === 'admin';
+
+  // Keep location in sync with the active punch when starting/stopping
+  useEffect(() => {
+    if (activePunch?.location) setLocation(activePunch.location);
+  }, [activePunch?.location]);
+
+  useEffect(() => {
+    if (!activePunch) return;
+    const i = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(i);
+  }, [activePunch]);
+
+  const today = new Date();
+  const todayTarget = getDailyTarget(today, settings);
+  const todayWorked = getWorkedOnDate(entries, today);
+  const liveAdd = activePunch ? sessionDuration({ start: activePunch.start }) : 0;
+  const todayTotal = todayWorked + liveAdd;
+
+  // Displayed week = current week + offset (negative = past, positive = future)
+  const displayedBase = new Date(today);
+  displayedBase.setDate(displayedBase.getDate() + weekOffset * 7);
+  const weekStart = startOfWeek(displayedBase);
+  const weekEnd = endOfWeek(displayedBase);
+  const weekStats = getRangeStats(entries, settings, weekStart, weekEnd);
+  const isCurrentWeek = weekOffset === 0;
+  // Live-punch time only counts in the "current" week stat context
+  const weekTotal = weekStats.worked + (isCurrentWeek ? liveAdd : 0);
+
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  const monthStats = getRangeStats(entries, settings, monthStart, monthEnd);
+  const monthTotal = monthStats.worked + liveAdd;
+
+  const todayPct = todayTarget > 0 ? (todayTotal / todayTarget) * 100 : (todayTotal > 0 ? 100 : 0);
+  const weekPct = weekStats.target > 0 ? (weekTotal / weekStats.target) * 100 : 0;
+  const monthPct = monthStats.target > 0 ? (monthTotal / monthStats.target) * 100 : 0;
+
+  const barClass = (pct) => {
+    if (pct >= 100) return 'complete';
+    return '';
+  };
+
+  const renderStat = (label, worked, target, pct, showRemaining = true) => {
+    const diff = worked - target;
+    return (
+      <div className="stat-card">
+        <div className="stat-label">{label}</div>
+        <div className="stat-value">{fmtHours(worked)}</div>
+        <div className="stat-target">מתוך יעד {fmtHours(target)}</div>
+        <div className="stat-bar">
+          <div
+            className={`stat-bar-fill ${barClass(pct)}`}
+            style={{ width: Math.min(100, Math.max(0, pct)) + '%' }}
+          />
+        </div>
+        {showRemaining && target > 0 && (
+          <div className={`stat-diff ${diff >= 0 ? 'positive' : 'negative'}`}>
+            {diff >= 0 ? '+' : ''}{fmtHours(diff)} {diff >= 0 ? 'מעל היעד' : 'נותרו להשלמה'}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const punchStart = () => onPunch({ action: 'start', location });
+  const punchStop = () => onPunch({ action: 'stop', location });
+
+  const liveTime = activePunch ? fmtHours(liveAdd) : null;
+  const startTime = activePunch ? new Date(activePunch.start) : null;
+
+  return (
+    <div>
+      <div className="card" style={{marginBottom: 20}}>
+        <div className="row-between">
+          <div>
+            <div className="card-title" style={{margin:0}}>שלום {user.name} 👋</div>
+            <div style={{color:'var(--text-muted)', fontSize:13, marginTop:4}}>
+              {HEB_DAYS[today.getDay()]}, {today.getDate()} ב{HEB_MONTHS[today.getMonth()]} {today.getFullYear()}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{marginBottom: 20}}>
+        <div className="card-title">כניסה/יציאה מהירה</div>
+        <div className="punch-panel">
+          <div className={`punch-status ${activePunch ? 'active' : ''}`}>
+            <div className="punch-status-label">
+              {activePunch ? 'בעבודה כרגע' : 'לא בעבודה'}
+            </div>
+            <div className="punch-status-time">
+              {activePunch ? liveTime : '--:--'}
+            </div>
+            <div className="punch-status-sub">
+              {activePunch ? (
+                <>
+                  נכנסת ב־<strong style={{color:'var(--text)', fontVariantNumeric:'tabular-nums'}}>{fmtTime24(startTime)}</strong>
+                  <button
+                    type="button"
+                    className="edit-time-link"
+                    onClick={() => setEditingPunch(true)}
+                    title="עריכת שעת כניסה"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    עריכה
+                  </button>
+                </>
+              ) : 'בחר מיקום ולחץ על "כניסה"'}
+            </div>
+            <LocationToggle value={location} onChange={setLocation} />
+          </div>
+          <div style={{display:'flex', alignItems:'center', justifyContent:'center'}}>
+            {activePunch ? (
+              <button className="btn btn-danger btn-lg btn-block" onClick={punchStop}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+                יציאה ושמירה
+              </button>
+            ) : (
+              <button className="btn btn-primary btn-lg btn-block" onClick={punchStart}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                כניסה
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="stats-grid">
+        {renderStat('היום', todayTotal, todayTarget, todayPct)}
+        {renderStat('השבוע (א׳–ה׳)', weekTotal, weekStats.target, weekPct)}
+        {renderStat('החודש', monthTotal, monthStats.target, monthPct)}
+      </div>
+
+      <div className="card">
+        <div className="row-between" style={{marginBottom: 14}}>
+          <div style={{fontSize: 16, fontWeight: 600}}>סיכום שבועי</div>
+          <div className="period-nav" style={{margin: 0, flex: '0 0 auto', minWidth: 260}}>
+            <button className="nav-btn" onClick={() => setWeekOffset(o => o - 1)} aria-label="שבוע קודם">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+            <div className="current" style={{fontSize: 13}}>
+              {isCurrentWeek
+                ? 'השבוע הנוכחי'
+                : weekOffset === -1 ? 'שבוע קודם'
+                : weekOffset === 1 ? 'שבוע הבא'
+                : `${weekStart.getDate()}.${weekStart.getMonth()+1} – ${weekEnd.getDate()}.${weekEnd.getMonth()+1}`}
+            </div>
+            <button className="nav-btn" onClick={() => setWeekOffset(o => o + 1)} aria-label="שבוע הבא">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            {!isCurrentWeek && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setWeekOffset(0)} title="חזרה לשבוע הנוכחי">היום</button>
+            )}
+          </div>
+        </div>
+        <div style={{color:'var(--text-muted)', fontSize: 13, marginBottom: 12}}>
+          {weekStart.getDate()}.{weekStart.getMonth()+1}.{weekStart.getFullYear()} – {weekEnd.getDate()}.{weekEnd.getMonth()+1}.{weekEnd.getFullYear()}
+          {' · '}
+          סה"כ בפועל: <strong style={{color:'var(--text)'}}>{fmtHours(weekTotal)}</strong>
+          {' · '}
+          יעד: <strong style={{color:'var(--text)'}}>{fmtHours(weekStats.target)}</strong>
+          {' · '}
+          הפרש: <strong style={{color: (weekTotal - weekStats.target) >= 0 ? 'var(--success)' : 'var(--danger)'}}>
+            {(weekTotal - weekStats.target) >= 0 ? '+' : ''}{fmtHours(weekTotal - weekStats.target)}
+          </strong>
+        </div>
+        <div className="table-wrap">
+          <table className="data">
+            <thead>
+              <tr>
+                <th>יום</th>
+                <th>תאריך</th>
+                <th>יעד</th>
+                <th>שעות בפועל</th>
+                <th>הפרש</th>
+                {isAdmin && <th style={{textAlign:'left'}}>עריכה</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {daysInRange(weekStart, weekEnd).map(d => {
+                const target = getDailyTarget(d, settings);
+                const isToday = ymd(d) === ymd(today);
+                const worked = getWorkedOnDate(entries, d) + (isToday ? liveAdd : 0);
+                const diff = worked - target;
+                const holidayInfo = getHolidayInfo(d, settings);
+                const key = ymd(d);
+                return (
+                  <tr key={key}>
+                    <td>
+                      {HEB_DAYS[d.getDay()]}
+                      {isToday && <span className="pill pill-info" style={{marginRight:6}}>היום</span>}
+                      {holidayInfo && (
+                        <span className={`pill ${holidayInfo.type === 'chag' ? 'pill-danger' : 'pill-warning'}`} style={{marginRight:6}}>
+                          {holidayInfo.note}
+                        </span>
+                      )}
+                    </td>
+                    <td>{d.getDate()}.{d.getMonth()+1}</td>
+                    <td>{fmtHours(target)}</td>
+                    <td style={{fontWeight:500}}>{fmtHours(worked)}</td>
+                    <td>
+                      {target > 0 || worked > 0 ? (
+                        <span className={diff >= 0 ? 'pill pill-success' : 'pill pill-danger'}>
+                          {diff >= 0 ? '+' : ''}{fmtHours(diff)}
+                        </span>
+                      ) : <span style={{color:'var(--text-soft)'}}>—</span>}
+                    </td>
+                    {isAdmin && (
+                      <td>
+                        <div className="actions-inline">
+                          <button
+                            className="icon-btn"
+                            onClick={() => setEditingTargetDate(key)}
+                            title="עריכת יעד ליום זה"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {editingTargetDate && (
+        <TargetEditorModal
+          date={editingTargetDate}
+          settings={settings}
+          setSettings={setSettings}
+          onClose={() => setEditingTargetDate(null)}
+        />
+      )}
+
+      {editingPunch && activePunch && (
+        <PunchEditModal
+          activePunch={activePunch}
+          onSave={(newStartIso) => {
+            onEditPunch(newStartIso);
+            setEditingPunch(false);
+          }}
+          onClose={() => setEditingPunch(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ===================== Entry form + list =====================
+function EntriesTab({ user, entries, setEntries, settings }) {
+  const [mode, setMode] = useState('range'); // 'range' | 'hours'
+  const [date, setDate] = useState(ymd(new Date()));
+  const [startT, setStartT] = useState('09:00');
+  const [endT, setEndT] = useState('18:00');
+  const [hours, setHours] = useState('9');
+  const [note, setNote] = useState('');
+  const [location, setLocation] = useState(DEFAULT_LOCATION);
+  const [editingId, setEditingId] = useState(null);
+  const [flash, setFlash] = useState('');
+  const [monthOffset, setMonthOffset] = useState(0);
+
+  const resetForm = () => {
+    setDate(ymd(new Date()));
+    setStartT('09:00'); setEndT('18:00'); setHours('9'); setNote('');
+    setLocation(DEFAULT_LOCATION);
+    setEditingId(null); setMode('range');
+  };
+
+  const submit = (e) => {
+    e.preventDefault();
+    let computedHours = 0;
+    let start = null, end = null;
+    if (mode === 'range') {
+      const s = timeStrToHours(startT);
+      const e2 = timeStrToHours(endT);
+      computedHours = e2 - s;
+      if (computedHours <= 0) {
+        alert('שעת סיום חייבת להיות אחרי שעת התחלה');
+        return;
+      }
+      start = startT; end = endT;
+    } else {
+      const n = parseFloat(hours);
+      if (isNaN(n) || n <= 0 || n > 24) {
+        alert('הזן מספר שעות תקין (בין 0 ל־24)');
+        return;
+      }
+      computedHours = n;
+    }
+
+    const userEntries = entries[user.id] || [];
+    const newEntry = {
+      id: editingId || 'e_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+      date,
+      hours: Math.round(computedHours * 100) / 100,
+      start,
+      end,
+      note: note.trim(),
+      mode,
+      location,
+      createdAt: editingId ? (userEntries.find(e => e.id === editingId)?.createdAt || new Date().toISOString()) : new Date().toISOString(),
+    };
+
+    let next;
+    if (editingId) {
+      next = userEntries.map(e => e.id === editingId ? newEntry : e);
+    } else {
+      next = [...userEntries, newEntry];
+    }
+    setEntries({ ...entries, [user.id]: next });
+    setFlash(editingId ? 'הרישום עודכן' : 'הרישום נוסף');
+    setTimeout(() => setFlash(''), 2000);
+    resetForm();
+  };
+
+  const editEntry = (entry) => {
+    setEditingId(entry.id);
+    setDate(entry.date);
+    if (entry.mode === 'range' && entry.start && entry.end) {
+      setMode('range');
+      setStartT(entry.start); setEndT(entry.end);
+    } else {
+      setMode('hours');
+      setHours(String(entry.hours));
+    }
+    setNote(entry.note || '');
+    setLocation(entry.location || DEFAULT_LOCATION);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const deleteEntry = (id) => {
+    if (!confirm('למחוק את הרישום?')) return;
+    const userEntries = entries[user.id] || [];
+    setEntries({ ...entries, [user.id]: userEntries.filter(e => e.id !== id) });
+    if (editingId === id) resetForm();
+  };
+
+  const userEntries = entries[user.id] || [];
+
+  // Show by selected month
+  const now = new Date();
+  const viewDate = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+  const viewStart = viewDate;
+  const viewEnd = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0);
+  const monthEntries = userEntries
+    .filter(e => {
+      const d = parseYmd(e.date);
+      return d >= viewStart && d <= viewEnd;
+    })
+    .sort((a,b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+
+  const monthStats = getRangeStats(userEntries, settings, viewStart, viewEnd);
+
+  return (
+    <div>
+      <div className="card" style={{marginBottom: 20}}>
+        <div className="card-title">
+          {editingId ? 'עריכת רישום' : 'הוספת רישום'}
+          {editingId && (
+            <button className="btn btn-ghost btn-sm" onClick={resetForm}>ביטול עריכה</button>
+          )}
+        </div>
+        {flash && <div className="form-success">{flash}</div>}
+
+        <form onSubmit={submit}>
+          <div className="form-row">
+            <div>
+              <label className="form-label">תאריך</label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+            </div>
+            <div>
+              <label className="form-label">סוג הרישום</label>
+              <select value={mode} onChange={e => setMode(e.target.value)}>
+                <option value="range">לפי שעות כניסה/יציאה</option>
+                <option value="hours">מספר שעות ישירות</option>
+              </select>
+            </div>
+          </div>
+
+          {mode === 'range' ? (
+            <div className="form-row">
+              <div>
+                <label className="form-label">כניסה</label>
+                <Time24Input value={startT} onChange={setStartT} required />
+              </div>
+              <div>
+                <label className="form-label">יציאה</label>
+                <Time24Input value={endT} onChange={setEndT} required />
+              </div>
+              <div>
+                <label className="form-label">סה״כ</label>
+                <input type="text" readOnly value={fmtHours(timeStrToHours(endT) - timeStrToHours(startT))} style={{background:'var(--surface-2)'}} />
+              </div>
+            </div>
+          ) : (
+            <div className="form-row">
+              <div>
+                <label className="form-label">שעות</label>
+                <input type="number" step="0.25" min="0" max="24" value={hours} onChange={e => setHours(e.target.value)} required />
+                <div className="hint">ניתן להזין חלקי שעה, לדוגמה 8.5 לשמונה וחצי</div>
+              </div>
+            </div>
+          )}
+
+          <div className="form-group">
+            <label className="form-label">מיקום עבודה</label>
+            <LocationToggle value={location} onChange={setLocation} />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">הערה (אופציונלי)</label>
+            <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="לדוגמה: פגישת צוות, פרויקט X..." />
+          </div>
+
+          <div className="form-actions">
+            <button type="submit" className="btn btn-primary">
+              {editingId ? 'שמירה' : 'הוספה'}
+            </button>
+            {editingId && (
+              <button type="button" className="btn btn-secondary" onClick={resetForm}>ביטול</button>
+            )}
+          </div>
+        </form>
+      </div>
+
+      <div className="card">
+        <div className="period-nav">
+          <button className="nav-btn" onClick={() => setMonthOffset(o => o - 1)} aria-label="חודש קודם">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <div className="current">
+            {HEB_MONTHS[viewDate.getMonth()]} {viewDate.getFullYear()}
+          </div>
+          <button className="nav-btn" onClick={() => setMonthOffset(o => o + 1)} aria-label="חודש הבא" disabled={monthOffset >= 0} style={monthOffset >= 0 ? {opacity:0.4, cursor:'not-allowed'} : {}}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+
+        <div className="stats-grid" style={{marginBottom: 20}}>
+          <div className="stat-card">
+            <div className="stat-label">שעות שנרשמו</div>
+            <div className="stat-value">{fmtHours(monthStats.worked)}</div>
+            <div className="stat-target">{monthEntries.length} רישומים</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">יעד חודשי</div>
+            <div className="stat-value">{fmtHours(monthStats.target)}</div>
+            <div className="stat-target">לפי ימי העבודה בחודש</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">הפרש</div>
+            <div className="stat-value" style={{color: monthStats.diff >= 0 ? 'var(--success)' : 'var(--danger)'}}>
+              {monthStats.diff >= 0 ? '+' : ''}{fmtHours(monthStats.diff)}
+            </div>
+            <div className="stat-target">{monthStats.diff >= 0 ? 'מעל היעד' : 'מתחת ליעד'}</div>
+          </div>
+        </div>
+
+        {monthEntries.length === 0 ? (
+          <div className="empty">
+            <div className="empty-icon">📋</div>
+            <div className="empty-title">אין רישומים בחודש זה</div>
+            <div className="empty-text">התחל בהוספת רישום חדש למעלה</div>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>תאריך</th>
+                  <th>יום</th>
+                  <th>שעות</th>
+                  <th>פירוט</th>
+                  <th>מיקום</th>
+                  <th>הערה</th>
+                  <th style={{textAlign:'left'}}>פעולות</th>
+                </tr>
+              </thead>
+              <tbody>
+                {monthEntries.map(e => {
+                  const d = parseYmd(e.date);
+                  return (
+                    <tr key={e.id}>
+                      <td>{d.getDate()}.{d.getMonth()+1}.{d.getFullYear()}</td>
+                      <td>{HEB_DAYS[d.getDay()]}</td>
+                      <td style={{fontWeight:600}}>{fmtHours(e.hours)}</td>
+                      <td style={{color:'var(--text-muted)', fontSize:13}}>
+                        {e.mode === 'range' && e.start && e.end
+                          ? `${e.start} – ${e.end}`
+                          : 'שעות ידני'}
+                      </td>
+                      <td>
+                        <LocationPill loc={e.location || DEFAULT_LOCATION} />
+                      </td>
+                      <td style={{color:'var(--text-muted)', fontSize:13, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                        {e.note || '—'}
+                      </td>
+                      <td>
+                        <div className="actions-inline">
+                          <button className="icon-btn" onClick={() => editEntry(e)} title="עריכה">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          </button>
+                          <button className="icon-btn danger" onClick={() => deleteEntry(e.id)} title="מחיקה">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ===================== Settings (Admin) =====================
+function AdminSettings({ settings, setSettings, users, setUsers, currentUser }) {
+  const [sh, setSh] = useState(settings.standardHours);
+  const [hh, setHh] = useState(settings.holidayHours || DEFAULT_SETTINGS.holidayHours);
+  const [overrideDate, setOverrideDate] = useState(ymd(new Date()));
+  const [overrideHours, setOverrideHours] = useState('0');
+  const [overrideNote, setOverrideNote] = useState('');
+  const [flash, setFlash] = useState('');
+  const [holidayFilter, setHolidayFilter] = useState('upcoming'); // 'upcoming' | 'all'
+
+  useEffect(() => setSh(settings.standardHours), [settings.standardHours]);
+  useEffect(() => setHh(settings.holidayHours || DEFAULT_SETTINGS.holidayHours), [settings.holidayHours]);
+
+  const updateStandard = (dow, val) => {
+    const n = parseFloat(val);
+    setSh({ ...sh, [dow]: isNaN(n) ? 0 : n });
+  };
+
+  const saveStandard = () => {
+    setSettings({ ...settings, standardHours: sh });
+    setFlash('התקן השבועי נשמר');
+    setTimeout(() => setFlash(''), 2000);
+  };
+
+  const updateHoliday = (type, val) => {
+    const n = parseFloat(val);
+    setHh({ ...hh, [type]: isNaN(n) ? 0 : n });
+  };
+
+  const saveHolidayHours = () => {
+    setSettings({ ...settings, holidayHours: hh });
+    setFlash('שעות החגים נשמרו');
+    setTimeout(() => setFlash(''), 2000);
+  };
+
+  const toggleHolidayDisabled = (key) => {
+    const disabled = settings.disabledHolidays || [];
+    const next = disabled.includes(key)
+      ? disabled.filter(k => k !== key)
+      : [...disabled, key];
+    setSettings({ ...settings, disabledHolidays: next });
+  };
+
+  const addOverride = (e) => {
+    e.preventDefault();
+    const n = parseFloat(overrideHours);
+    if (isNaN(n) || n < 0 || n > 24) {
+      alert('הזן מספר שעות תקין');
+      return;
+    }
+    const next = {
+      ...settings,
+      overrides: {
+        ...settings.overrides,
+        [overrideDate]: { hours: n, note: overrideNote.trim() || (n === 0 ? 'חג' : 'חריג'), type: 'custom' }
+      }
+    };
+    setSettings(next);
+    setOverrideNote(''); setOverrideHours('0');
+    setFlash('החריגה נוספה');
+    setTimeout(() => setFlash(''), 2000);
+  };
+
+  const removeOverride = (key) => {
+    if (!confirm('להסיר את החריגה?')) return;
+    const { [key]: _, ...rest } = settings.overrides;
+    setSettings({ ...settings, overrides: rest });
+  };
+
+  const toggleRole = (userId) => {
+    if (userId === currentUser.id) {
+      alert('לא ניתן לשנות את ההרשאה שלך');
+      return;
+    }
+    setUsers(users.map(u => u.id === userId ? { ...u, role: u.role === 'admin' ? 'user' : 'admin' } : u));
+  };
+
+  const removeUser = (userId) => {
+    if (userId === currentUser.id) return;
+    if (!confirm('למחוק את המשתמש? כל הנתונים שלו יימחקו.')) return;
+    setUsers(users.filter(u => u.id !== userId));
+    const entries = loadJSON(STORAGE_KEYS.entries, {});
+    delete entries[userId];
+    saveJSON(STORAGE_KEYS.entries, entries);
+  };
+
+  const overrideList = Object.entries(settings.overrides || {})
+    .sort((a, b) => b[0].localeCompare(a[0]));
+
+  // Build sorted list of built-in holidays
+  const todayKey = ymd(new Date());
+  const disabled = settings.disabledHolidays || [];
+  const allHolidays = Object.entries(ISRAELI_HOLIDAYS)
+    .map(([key, h]) => ({ key, ...h }))
+    .sort((a, b) => a.key.localeCompare(b.key));
+  const visibleHolidays = holidayFilter === 'upcoming'
+    ? allHolidays.filter(h => h.key >= todayKey)
+    : allHolidays;
+
+  return (
+    <div>
+      {flash && <div className="form-success" style={{marginBottom: 16}}>{flash}</div>}
+
+      <div className="card" style={{marginBottom: 20}}>
+        <div className="card-title">תקן שעות שבועי</div>
+        <div style={{color:'var(--text-muted)', fontSize: 13, marginBottom: 16}}>
+          קבע את מספר שעות העבודה הסטנדרטי לכל יום בשבוע. שישי ושבת אינם ימי עבודה.
+        </div>
+        <div className="admin-day-grid">
+          {[0,1,2,3,4].map(dow => (
+            <div className="admin-day-card" key={dow}>
+              <div className="day-name">יום {HEB_DAYS[dow]}</div>
+              <div className="day-hours-input">
+                <input
+                  type="number" step="0.25" min="0" max="24"
+                  value={sh[dow] ?? 0}
+                  onChange={e => updateStandard(dow, e.target.value)}
+                />
+                <span>שעות</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="form-actions">
+          <button className="btn btn-primary" onClick={saveStandard}>שמירת תקן</button>
+        </div>
+      </div>
+
+      <div className="card" style={{marginBottom: 20}}>
+        <div className="card-title">שעות לפי סוג חג</div>
+        <div style={{color:'var(--text-muted)', fontSize: 13, marginBottom: 16}}>
+          הגדרות אלו חלות אוטומטית על כל חגי ישראל הרלוונטיים. שינוי כאן משפיע על כל התאריכים מהסוג הזה.
+        </div>
+        <div className="admin-day-grid">
+          {Object.entries(HOLIDAY_TYPES).map(([type, meta]) => (
+            <div className="admin-day-card holiday" key={type}>
+              <div className="day-name">{meta.label}</div>
+              <div className="day-hours-input">
+                <input
+                  type="number" step="0.25" min="0" max="24"
+                  value={hh[type] ?? meta.defaultHours}
+                  onChange={e => updateHoliday(type, e.target.value)}
+                />
+                <span>שעות</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="form-actions">
+          <button className="btn btn-primary" onClick={saveHolidayHours}>שמירת שעות חגים</button>
+        </div>
+      </div>
+
+      <div className="card" style={{marginBottom: 20}}>
+        <div className="card-title">
+          לוח חגי ישראל
+          <div style={{display:'flex', gap: 6}}>
+            <button
+              className={`btn btn-sm ${holidayFilter === 'upcoming' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setHolidayFilter('upcoming')}
+            >קרובים</button>
+            <button
+              className={`btn btn-sm ${holidayFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setHolidayFilter('all')}
+            >כולם</button>
+          </div>
+        </div>
+        <div style={{color:'var(--text-muted)', fontSize: 13, marginBottom: 16}}>
+          כל התאריכים של חגי ישראל לשנת 2026. ניתן לכבות תאריך ספציפי (למשל אם הצוות עובד באותו יום) על ידי לחיצה על הכפתור.
+          שישי ושבת לא מופיעים כי הם ממילא לא ימי עבודה.
+        </div>
+        {visibleHolidays.length === 0 ? (
+          <div className="empty">
+            <div className="empty-icon">📅</div>
+            <div className="empty-text">אין חגים קרובים</div>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>תאריך</th>
+                  <th>יום</th>
+                  <th>שם החג</th>
+                  <th>סוג</th>
+                  <th>שעות</th>
+                  <th style={{textAlign:'left'}}>סטטוס</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleHolidays.map(h => {
+                  const d = parseYmd(h.key);
+                  const isDisabled = disabled.includes(h.key);
+                  const hours = hh[h.type] ?? HOLIDAY_TYPES[h.type].defaultHours;
+                  const pillClass =
+                    h.type === 'chag' ? 'pill-danger' :
+                    h.type === 'erev' ? 'pill-warning' :
+                    h.type === 'memorial' ? 'pill-info' :
+                    'pill-muted';
+                  return (
+                    <tr key={h.key} style={isDisabled ? {opacity:0.5} : {}}>
+                      <td>{d.getDate()}.{d.getMonth()+1}.{d.getFullYear()}</td>
+                      <td>{HEB_DAYS[d.getDay()]}</td>
+                      <td>{h.note}</td>
+                      <td><span className={`pill ${pillClass}`}>{HOLIDAY_TYPES[h.type].label}</span></td>
+                      <td style={{fontWeight:600}}>
+                        {isDisabled
+                          ? <span style={{color:'var(--text-soft)', fontWeight:400}}>—</span>
+                          : fmtHours(hours)
+                        }
+                      </td>
+                      <td>
+                        <div style={{display:'flex', justifyContent:'flex-end'}}>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => toggleHolidayDisabled(h.key)}
+                          >
+                            {isDisabled ? 'הפעלה מחדש' : 'ביטול'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="card" style={{marginBottom: 20}}>
+        <div className="card-title">חריגות מותאמות אישית</div>
+        <div style={{color:'var(--text-muted)', fontSize: 13, marginBottom: 16}}>
+          לתאריכים שאינם חגים רשמיים — יום עבודה מקוצר, אירוע חברה, חופשה מרוכזת וכו'.
+          חריגה מותאמת אישית גוברת על הגדרת החג המובנה.
+        </div>
+        <form onSubmit={addOverride}>
+          <div className="form-row">
+            <div>
+              <label className="form-label">תאריך</label>
+              <input type="date" value={overrideDate} onChange={e => setOverrideDate(e.target.value)} required />
+            </div>
+            <div>
+              <label className="form-label">שעות ליום זה</label>
+              <input type="number" step="0.25" min="0" max="24" value={overrideHours} onChange={e => setOverrideHours(e.target.value)} required />
+              <div className="hint">הזן 0 ליום חופש מלא</div>
+            </div>
+            <div>
+              <label className="form-label">תיאור</label>
+              <input type="text" value={overrideNote} onChange={e => setOverrideNote(e.target.value)} placeholder="יום גיבוש, ערב חגיגה..." />
+            </div>
+          </div>
+          <div className="form-actions">
+            <button type="submit" className="btn btn-primary">הוספת חריגה</button>
+          </div>
+        </form>
+
+        <div className="divider"></div>
+
+        {overrideList.length === 0 ? (
+          <div className="empty">
+            <div className="empty-icon">📅</div>
+            <div className="empty-text">לא הוגדרו חריגות מותאמות</div>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>תאריך</th>
+                  <th>יום</th>
+                  <th>שעות</th>
+                  <th>תיאור</th>
+                  <th style={{textAlign:'left'}}>פעולות</th>
+                </tr>
+              </thead>
+              <tbody>
+                {overrideList.map(([key, val]) => {
+                  const d = parseYmd(key);
+                  return (
+                    <tr key={key}>
+                      <td>{d.getDate()}.{d.getMonth()+1}.{d.getFullYear()}</td>
+                      <td>{HEB_DAYS[d.getDay()]}</td>
+                      <td style={{fontWeight:600}}>{fmtHours(val.hours)}</td>
+                      <td style={{color:'var(--text-muted)'}}>{val.note || '—'}</td>
+                      <td>
+                        <div className="actions-inline">
+                          <button className="icon-btn danger" onClick={() => removeOverride(key)} title="מחיקה">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="card-title">
+          ניהול משתמשים
+          <span className="count">{users.length} משתמשים</span>
+        </div>
+        <div className="table-wrap">
+          <table className="data">
+            <thead>
+              <tr>
+                <th>שם</th>
+                <th>שם משתמש</th>
+                <th>תפקיד</th>
+                <th>תאריך הצטרפות</th>
+                <th style={{textAlign:'left'}}>פעולות</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map(u => (
+                <tr key={u.id}>
+                  <td>
+                    <div style={{display:'flex', alignItems:'center', gap:10}}>
+                      <div className="user-avatar" style={{width:28, height:28, fontSize:12}}>
+                        {u.name.charAt(0)}
+                      </div>
+                      {u.name}
+                      {u.id === currentUser.id && <span className="pill pill-info">זה אתה</span>}
+                    </div>
+                  </td>
+                  <td style={{color:'var(--text-muted)'}} dir="ltr">{u.username}</td>
+                  <td>
+                    {u.role === 'admin'
+                      ? <span className="pill pill-warning">מנהל</span>
+                      : <span className="pill pill-muted">עובד</span>}
+                  </td>
+                  <td style={{color:'var(--text-muted)', fontSize:13}}>
+                    {new Date(u.createdAt).toLocaleDateString('he-IL')}
+                  </td>
+                  <td>
+                    <div className="actions-inline">
+                      {u.id !== currentUser.id && (
+                        <>
+                          <button className="btn btn-ghost btn-sm" onClick={() => toggleRole(u.id)}>
+                            {u.role === 'admin' ? 'הסר מנהל' : 'הפוך למנהל'}
+                          </button>
+                          <button className="icon-btn danger" onClick={() => removeUser(u.id)} title="מחיקה">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===================== Main app =====================
+function App() {
+  const auth = useAuth();
+  const [tab, setTab] = useState('dashboard');
+  const [entries, setEntries] = useState(() => loadJSON(STORAGE_KEYS.entries, {}));
+  const [settings, setSettings] = useState(() => loadJSON(STORAGE_KEYS.settings, DEFAULT_SETTINGS));
+  const [activePunches, setActivePunches] = useState(() => loadJSON(STORAGE_KEYS.activePunch, {}));
+
+  useEffect(() => saveJSON(STORAGE_KEYS.entries, entries), [entries]);
+  useEffect(() => saveJSON(STORAGE_KEYS.settings, settings), [settings]);
+  useEffect(() => saveJSON(STORAGE_KEYS.activePunch, activePunches), [activePunches]);
+
+  // Merge any missing default settings
+  useEffect(() => {
+    if (!settings.standardHours) {
+      setSettings({ ...DEFAULT_SETTINGS, ...settings });
+    }
+  }, []);
+
+  if (!auth.currentUser) {
+    return <LoginScreen auth={auth} />;
+  }
+
+  const user = auth.currentUser;
+  const userEntries = entries[user.id] || [];
+  const activePunch = activePunches[user.id] || null;
+
+  const handlePunch = ({ action, location }) => {
+    if (action === 'start') {
+      if (activePunch) return;
+      setActivePunches({
+        ...activePunches,
+        [user.id]: {
+          start: new Date().toISOString(),
+          location: location || DEFAULT_LOCATION,
+        }
+      });
+    } else if (action === 'stop') {
+      if (!activePunch) return;
+      const startDate = new Date(activePunch.start);
+      const endDate = new Date();
+      const hours = diffHours(activePunch.start, endDate.toISOString());
+      if (hours < 0.01) {
+        if (!confirm('פחות מדקה נרשמה. להפסיק בכל זאת?')) return;
+      }
+      const dateKey = ymd(startDate);
+      const newEntry = {
+        id: 'e_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+        date: dateKey,
+        hours: Math.round(hours * 100) / 100,
+        start: fmtTime24(startDate),
+        end:   fmtTime24(endDate),
+        note: '',
+        mode: 'range',
+        location: location || activePunch.location || DEFAULT_LOCATION,
+        createdAt: new Date().toISOString(),
+        viaPunch: true,
+      };
+      const nextUserEntries = [...userEntries, newEntry];
+      setEntries({ ...entries, [user.id]: nextUserEntries });
+      const { [user.id]: _, ...restPunches } = activePunches;
+      setActivePunches(restPunches);
+    }
+  };
+
+  // Update the start time of the currently active punch (before user clicks stop)
+  const handleEditPunch = (newStartIso) => {
+    if (!activePunch) return;
+    setActivePunches({
+      ...activePunches,
+      [user.id]: { ...activePunch, start: newStartIso }
+    });
+  };
+
+  const tabs = [
+    { id: 'dashboard', label: 'מסך ראשי', icon: '🏠' },
+    { id: 'entries', label: 'השעות שלי', icon: '📋' },
+  ];
+  if (user.role === 'admin') {
+    tabs.push({ id: 'admin', label: 'הגדרות וניהול', icon: '⚙️' });
+  }
+
+  return (
+    <div className="app">
+      <div className="topbar">
+        <div className="topbar-title">
+          <div className="logo">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
+          מעקב שעות צוות
+        </div>
+        <div className="topbar-user">
+          <div className="user-chip">
+            <div className="user-avatar">{user.name.charAt(0)}</div>
+            <span>{user.name}</span>
+            {user.role === 'admin' && <span className="admin-badge">מנהל</span>}
+          </div>
+          <button className="btn btn-secondary btn-sm" onClick={auth.logout}>יציאה</button>
+        </div>
+      </div>
+
+      <div className="tabs">
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            className={`tab ${tab === t.id ? 'active' : ''}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'dashboard' && (
+        <Dashboard
+          user={user}
+          entries={userEntries}
+          settings={settings}
+          setSettings={setSettings}
+          activePunch={activePunch}
+          onPunch={handlePunch}
+          onEditPunch={handleEditPunch}
+        />
+      )}
+      {tab === 'entries' && (
+        <EntriesTab
+          user={user}
+          entries={entries}
+          setEntries={setEntries}
+          settings={settings}
+        />
+      )}
+      {tab === 'admin' && user.role === 'admin' && (
+        <AdminSettings
+          settings={settings}
+          setSettings={setSettings}
+          users={auth.users}
+          setUsers={auth.setUsers}
+          currentUser={user}
+        />
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
