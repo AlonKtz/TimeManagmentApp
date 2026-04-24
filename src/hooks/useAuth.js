@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import * as OTPAuth from 'otpauth';
 import { STORAGE_KEYS } from '../constants';
-import { loadJSON, saveJSON } from '../utils/storage';
+import { saveData, loadAllData } from '../utils/storage';
 import { hashPwd } from '../utils/business';
 
 function makeTOTP(username, secretBase32) {
@@ -16,14 +16,34 @@ function makeTOTP(username, secretBase32) {
 }
 
 export function useAuth() {
-  const [users, setUsers] = useState(() => loadJSON(STORAGE_KEYS.users, []));
-  const [session, setSession] = useState(() => loadJSON(STORAGE_KEYS.session, null));
+  const [users, setUsers] = useState([]);
+  const [session, setSession] = useState(null);
+  const [authLoaded, setAuthLoaded] = useState(false);
 
-  useEffect(() => saveJSON(STORAGE_KEYS.users, users), [users]);
+  // Load from localforage on mount
   useEffect(() => {
-    if (session) saveJSON(STORAGE_KEYS.session, session);
-    else localStorage.removeItem(STORAGE_KEYS.session);
-  }, [session]);
+    loadAllData([STORAGE_KEYS.users, STORAGE_KEYS.session]).then((data) => {
+      setUsers(data[STORAGE_KEYS.users] || []);
+      setSession(data[STORAGE_KEYS.session] || null);
+      setAuthLoaded(true);
+    });
+  }, []);
+
+  // Save users on change (after loaded)
+  useEffect(() => {
+    if (!authLoaded) return;
+    saveData(STORAGE_KEYS.users, users);
+  }, [users, authLoaded]);
+
+  // Save session on change (after loaded)
+  useEffect(() => {
+    if (!authLoaded) return;
+    if (session) {
+      saveData(STORAGE_KEYS.session, session);
+    } else {
+      saveData(STORAGE_KEYS.session, null);
+    }
+  }, [session, authLoaded]);
 
   const register = ({ username, password, name }) => {
     const u = username.trim().toLowerCase();
@@ -38,8 +58,9 @@ export function useAuth() {
       passwordHash: hashPwd(password),
       name: name.trim(),
       role: isFirst ? 'admin' : 'user',
-      status: isFirst ? 'active' : 'pending', // new users wait for admin approval
+      status: isFirst ? 'active' : 'pending',
       twoFactorSecret: null,
+      jobPercent: 100,
       createdAt: new Date().toISOString(),
     };
     setUsers(prev => [...prev, newUser]);
@@ -101,6 +122,10 @@ export function useAuth() {
     }
   };
 
+  const updateJobPercent = ({ userId, percent }) => {
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, jobPercent: percent } : u));
+  };
+
   const approveUser = (userId) => {
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'active' } : u));
   };
@@ -117,10 +142,11 @@ export function useAuth() {
   );
 
   return {
-    users, setUsers, currentUser,
+    users, setUsers, currentUser, authLoaded,
     register, login, logout,
     completeTwoFactorLogin,
     enableTwoFactor, disableTwoFactor,
+    updateJobPercent,
     approveUser, rejectUser,
   };
 }

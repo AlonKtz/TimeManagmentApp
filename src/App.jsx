@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { STORAGE_KEYS, DEFAULT_SETTINGS, DEFAULT_LOCATION } from './constants';
-import { loadJSON, saveJSON } from './utils/storage';
+import { saveData, loadAllData } from './utils/storage';
 import { ymd, fmtTime24, diffHours } from './utils/date';
 import { useAuth } from './hooks/useAuth';
 import LoginScreen from './components/LoginScreen';
@@ -8,23 +8,70 @@ import Dashboard from './components/Dashboard';
 import EntriesTab from './components/EntriesTab';
 import AdminSettings from './components/AdminSettings';
 import AccountSettings from './components/AccountSettings';
+import DaysOff from './components/DaysOff';
+import QuarterlyView from './components/QuarterlyView';
 
 export default function App() {
   const auth = useAuth();
   const [tab, setTab] = useState('dashboard');
-  const [entries, setEntries] = useState(() => loadJSON(STORAGE_KEYS.entries, {}));
-  const [settings, setSettings] = useState(() => loadJSON(STORAGE_KEYS.settings, DEFAULT_SETTINGS));
-  const [activePunches, setActivePunches] = useState(() => loadJSON(STORAGE_KEYS.activePunch, {}));
 
-  useEffect(() => saveJSON(STORAGE_KEYS.entries, entries), [entries]);
-  useEffect(() => saveJSON(STORAGE_KEYS.settings, settings), [settings]);
-  useEffect(() => saveJSON(STORAGE_KEYS.activePunch, activePunches), [activePunches]);
+  const [entries, setEntries] = useState({});
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [activePunches, setActivePunches] = useState({});
+  const [daysOff, setDaysOff] = useState({});
+  const [appLoaded, setAppLoaded] = useState(false);
 
+  // Load app data from localforage on mount
   useEffect(() => {
-    if (!settings.standardHours) {
-      setSettings({ ...DEFAULT_SETTINGS, ...settings });
-    }
+    loadAllData([
+      STORAGE_KEYS.entries,
+      STORAGE_KEYS.settings,
+      STORAGE_KEYS.activePunch,
+      STORAGE_KEYS.daysOff,
+    ]).then((data) => {
+      const loadedSettings = data[STORAGE_KEYS.settings];
+      setEntries(data[STORAGE_KEYS.entries] || {});
+      setSettings(loadedSettings && loadedSettings.standardHours
+        ? loadedSettings
+        : { ...DEFAULT_SETTINGS, ...(loadedSettings || {}) });
+      setActivePunches(data[STORAGE_KEYS.activePunch] || {});
+      setDaysOff(data[STORAGE_KEYS.daysOff] || {});
+      setAppLoaded(true);
+    });
   }, []);
+
+  // Save app data on change (fire-and-forget)
+  useEffect(() => { if (appLoaded) saveData(STORAGE_KEYS.entries, entries); }, [entries, appLoaded]);
+  useEffect(() => { if (appLoaded) saveData(STORAGE_KEYS.settings, settings); }, [settings, appLoaded]);
+  useEffect(() => { if (appLoaded) saveData(STORAGE_KEYS.activePunch, activePunches); }, [activePunches, appLoaded]);
+  useEffect(() => { if (appLoaded) saveData(STORAGE_KEYS.daysOff, daysOff); }, [daysOff, appLoaded]);
+
+  // Show loading screen until both auth and app data are ready
+  if (!auth.authLoaded || !appLoaded) {
+    return (
+      <div style={{
+        minHeight: '100dvh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'column',
+        gap: 16,
+        background: 'var(--bg)',
+        color: 'var(--text-muted)',
+        fontSize: 15,
+      }}>
+        <div style={{
+          width: 40, height: 40,
+          borderRadius: '50%',
+          border: '3px solid var(--border)',
+          borderTopColor: 'var(--primary)',
+          animation: 'spin 0.8s linear infinite',
+        }} />
+        <span>טוען...</span>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
 
   if (!auth.currentUser) {
     return <LoginScreen auth={auth} />;
@@ -33,6 +80,7 @@ export default function App() {
   const user = auth.currentUser;
   const userEntries = entries[user.id] || [];
   const activePunch = activePunches[user.id] || null;
+  const userDaysOff = daysOff[user.id] || [];
 
   const handlePunch = ({ action, location }) => {
     if (action === 'start') {
@@ -77,6 +125,8 @@ export default function App() {
   const tabs = [
     { id: 'dashboard', label: 'מסך ראשי' },
     { id: 'entries', label: 'השעות שלי' },
+    { id: 'daysoff', label: 'ימי חופש' },
+    { id: 'quarterly', label: 'סיכום רבעוני' },
     { id: 'account', label: 'החשבון שלי' },
   ];
   if (user.role === 'admin') tabs.push({
@@ -123,16 +173,47 @@ export default function App() {
           activePunch={activePunch}
           onPunch={handlePunch}
           onEditPunch={handleEditPunch}
+          daysOff={userDaysOff}
         />
       )}
       {tab === 'entries' && (
-        <EntriesTab user={user} entries={entries} setEntries={setEntries} settings={settings} />
+        <EntriesTab
+          user={user}
+          entries={entries}
+          setEntries={setEntries}
+          settings={settings}
+          daysOff={userDaysOff}
+        />
+      )}
+      {tab === 'daysoff' && (
+        <DaysOff
+          userId={user.id}
+          daysOff={daysOff}
+          setDaysOff={setDaysOff}
+          settings={settings}
+          jobPercent={user.jobPercent ?? 100}
+        />
+      )}
+      {tab === 'quarterly' && (
+        <QuarterlyView
+          user={user}
+          entries={userEntries}
+          settings={settings}
+          daysOff={daysOff}
+        />
       )}
       {tab === 'account' && (
         <AccountSettings user={user} auth={auth} />
       )}
       {tab === 'admin' && user.role === 'admin' && (
-        <AdminSettings settings={settings} setSettings={setSettings} users={auth.users} setUsers={auth.setUsers} currentUser={user} auth={auth} />
+        <AdminSettings
+          settings={settings}
+          setSettings={setSettings}
+          users={auth.users}
+          setUsers={auth.setUsers}
+          currentUser={user}
+          auth={auth}
+        />
       )}
     </div>
   );

@@ -4,6 +4,7 @@ export const STORAGE_KEYS = {
   entries: 'tt_entries',
   settings: 'tt_settings',
   activePunch: 'tt_active_punch',
+  daysOff: 'tt_days_off',
 };
 
 export const HEB_DAYS = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];

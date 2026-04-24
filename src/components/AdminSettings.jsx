@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { HEB_DAYS, HOLIDAY_TYPES, ISRAELI_HOLIDAYS, DEFAULT_SETTINGS, STORAGE_KEYS } from '../constants';
 import { ymd, parseYmd, fmtHours } from '../utils/date';
-import { loadJSON, saveJSON } from '../utils/storage';
+import { saveData, loadAllData } from '../utils/storage';
 
 export default function AdminSettings({ settings, setSettings, users, setUsers, currentUser, auth }) {
   const [sh, setSh] = useState(settings.standardHours);
@@ -70,21 +70,14 @@ export default function AdminSettings({ settings, setSettings, users, setUsers, 
     setSettings({ ...settings, overrides: rest });
   };
 
-  const toggleRole = (userId) => {
-    if (userId === currentUser.id) {
-      alert('לא ניתן לשנות את ההרשאה שלך');
-      return;
-    }
-    setUsers(users.map(u => u.id === userId ? { ...u, role: u.role === 'admin' ? 'user' : 'admin' } : u));
-  };
-
-  const removeUser = (userId) => {
+  const removeUser = async (userId) => {
     if (userId === currentUser.id) return;
     if (!confirm('למחוק את המשתמש? כל הנתונים שלו יימחקו.')) return;
     setUsers(users.filter(u => u.id !== userId));
-    const entries = loadJSON(STORAGE_KEYS.entries, {});
+    const data = await loadAllData([STORAGE_KEYS.entries]);
+    const entries = data[STORAGE_KEYS.entries] || {};
     delete entries[userId];
-    saveJSON(STORAGE_KEYS.entries, entries);
+    saveData(STORAGE_KEYS.entries, entries);
   };
 
   const overrideList = Object.entries(settings.overrides || {}).sort((a, b) => b[0].localeCompare(a[0]));
@@ -315,6 +308,9 @@ export default function AdminSettings({ settings, setSettings, users, setUsers, 
           ניהול משתמשים פעילים
           <span className="count">{activeUsers.length} משתמשים</span>
         </div>
+        <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
+          יש מנהל מערכת אחד בלבד — המשתמש הראשון שנרשם למערכת.
+        </div>
         <div className="table-wrap">
           <table className="data">
             <thead>
@@ -347,14 +343,9 @@ export default function AdminSettings({ settings, setSettings, users, setUsers, 
                   <td>
                     <div className="actions-inline">
                       {u.id !== currentUser.id && (
-                        <>
-                          <button className="btn btn-ghost btn-sm" onClick={() => toggleRole(u.id)}>
-                            {u.role === 'admin' ? 'הסר מנהל' : 'הפוך למנהל'}
-                          </button>
-                          <button className="icon-btn danger" onClick={() => removeUser(u.id)} title="מחיקה">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                          </button>
-                        </>
+                        <button className="icon-btn danger" onClick={() => removeUser(u.id)} title="מחיקה">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
                       )}
                     </div>
                   </td>

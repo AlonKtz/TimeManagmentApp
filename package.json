@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "localforage": "^1.10.0",
     "otpauth": "^9.5.0",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",

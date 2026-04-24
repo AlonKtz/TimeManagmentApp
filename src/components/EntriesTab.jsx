@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { HEB_DAYS, HEB_MONTHS, DEFAULT_LOCATION } from '../constants';
 import { ymd, parseYmd, fmtHours, timeStrToHours } from '../utils/date';
-import { getRangeStats } from '../utils/business';
+import { getPersonalRangeStats } from '../utils/business';
 import LocationToggle from './LocationToggle';
 import LocationPill from './LocationPill';
 import Time24Input from './Time24Input';
 
-export default function EntriesTab({ user, entries, setEntries, settings }) {
+export default function EntriesTab({ user, entries, setEntries, settings, daysOff }) {
   const [mode, setMode] = useState('range');
   const [date, setDate] = useState(ymd(new Date()));
   const [startT, setStartT] = useState('09:00');
@@ -101,7 +101,9 @@ export default function EntriesTab({ user, entries, setEntries, settings }) {
     .filter(e => { const d = parseYmd(e.date); return d >= viewStart && d <= viewEnd; })
     .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
 
-  const monthStats = getRangeStats(userEntries, settings, viewStart, viewEnd);
+  const jobPercent = user.jobPercent ?? 100;
+  const userDaysOff = daysOff || [];
+  const monthStats = getPersonalRangeStats(userEntries, settings, viewStart, viewEnd, jobPercent, userDaysOff);
 
   return (
     <div>

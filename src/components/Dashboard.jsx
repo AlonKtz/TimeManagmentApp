@@ -1,18 +1,20 @@
 import { useState, useEffect } from 'react';
 import { HEB_DAYS, HEB_MONTHS, DEFAULT_LOCATION } from '../constants';
 import { ymd, fmtHours, fmtTime24, startOfWeek, endOfWeek, daysInRange, sessionDuration } from '../utils/date';
-import { getDailyTarget, getWorkedOnDate, getRangeStats, getHolidayInfo } from '../utils/business';
+import { getPersonalDailyTarget, getWorkedOnDate, getPersonalRangeStats, getHolidayInfo } from '../utils/business';
 import LocationToggle from './LocationToggle';
 import PunchEditModal from './PunchEditModal';
 import TargetEditorModal from './TargetEditorModal';
 
-export default function Dashboard({ user, entries, settings, setSettings, activePunch, onPunch, onEditPunch }) {
+export default function Dashboard({ user, entries, settings, setSettings, activePunch, onPunch, onEditPunch, daysOff }) {
   const [now, setNow] = useState(new Date());
   const [weekOffset, setWeekOffset] = useState(0);
   const [editingTargetDate, setEditingTargetDate] = useState(null);
   const [editingPunch, setEditingPunch] = useState(false);
   const [location, setLocation] = useState(() => activePunch?.location || DEFAULT_LOCATION);
   const isAdmin = user.role === 'admin';
+  const jobPercent = user.jobPercent ?? 100;
+  const userDaysOff = daysOff || [];
 
   useEffect(() => {
     if (activePunch?.location) setLocation(activePunch.location);
@@ -25,7 +27,7 @@ export default function Dashboard({ user, entries, settings, setSettings, active
   }, [activePunch]);
 
   const today = new Date();
-  const todayTarget = getDailyTarget(today, settings);
+  const todayTarget = getPersonalDailyTarget(today, settings, jobPercent, userDaysOff);
   const todayWorked = getWorkedOnDate(entries, today);
   const liveAdd = activePunch ? sessionDuration({ start: activePunch.start }) : 0;
   const todayTotal = todayWorked + liveAdd;
@@ -34,18 +36,46 @@ export default function Dashboard({ user, entries, settings, setSettings, active
   displayedBase.setDate(displayedBase.getDate() + weekOffset * 7);
   const weekStart = startOfWeek(displayedBase);
   const weekEnd = endOfWeek(displayedBase);
-  const weekStats = getRangeStats(entries, settings, weekStart, weekEnd);
+  const weekStats = getPersonalRangeStats(entries, settings, weekStart, weekEnd, jobPercent, userDaysOff);
   const isCurrentWeek = weekOffset === 0;
   const weekTotal = weekStats.worked + (isCurrentWeek ? liveAdd : 0);
 
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
   const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-  const monthStats = getRangeStats(entries, settings, monthStart, monthEnd);
+  const monthStats = getPersonalRangeStats(entries, settings, monthStart, monthEnd, jobPercent, userDaysOff);
   const monthTotal = monthStats.worked + liveAdd;
 
   const todayPct = todayTarget > 0 ? (todayTotal / todayTarget) * 100 : (todayTotal > 0 ? 100 : 0);
   const weekPct = weekStats.target > 0 ? (weekTotal / weekStats.target) * 100 : 0;
   const monthPct = monthStats.target > 0 ? (monthTotal / monthStats.target) * 100 : 0;
+
+  // ===== Weekly averages over past 4 complete weeks =====
+  const avgStats = (() => {
+    const currentWeekStart = startOfWeek(today);
+    let totalDailyWorkedDays = 0;
+    let totalDailyWorkedHours = 0;
+    let totalWeeklyHours = 0;
+    const WEEKS = 4;
+    for (let w = 1; w <= WEEKS; w++) {
+      const ws = new Date(currentWeekStart);
+      ws.setDate(ws.getDate() - w * 7);
+      const we = endOfWeek(ws);
+      const days = daysInRange(ws, we);
+      let weekHours = 0;
+      for (const d of days) {
+        const worked = getWorkedOnDate(entries, d);
+        if (worked > 0) {
+          totalDailyWorkedDays++;
+          totalDailyWorkedHours += worked;
+        }
+        weekHours += worked;
+      }
+      totalWeeklyHours += weekHours;
+    }
+    const dailyAvg = totalDailyWorkedDays > 0 ? totalDailyWorkedHours / totalDailyWorkedDays : 0;
+    const weeklyAvg = totalWeeklyHours / WEEKS;
+    return { dailyAvg, weeklyAvg };
+  })();
 
   const barClass = (pct) => pct >= 100 ? 'complete' : '';
 
@@ -79,6 +109,9 @@ export default function Dashboard({ user, entries, settings, setSettings, active
             <div className="card-title" style={{ margin: 0 }}>שלום {user.name} 👋</div>
             <div style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4 }}>
               {HEB_DAYS[today.getDay()]}, {today.getDate()} ב{HEB_MONTHS[today.getMonth()]} {today.getFullYear()}
+              {jobPercent < 100 && (
+                <span className="pill pill-muted" style={{ marginRight: 8 }}>{jobPercent}% משרה</span>
+              )}
             </div>
           </div>
         </div>
@@ -125,6 +158,28 @@ export default function Dashboard({ user, entries, settings, setSettings, active
         {renderStat('החודש', monthTotal, monthStats.target, monthPct)}
       </div>
 
+      {/* Weekly & daily averages */}
+      <div className="stats-grid" style={{ marginBottom: 20 }}>
+        <div className="stat-card">
+          <div className="stat-label">ממוצע יומי</div>
+          <div className="stat-value">{fmtHours(avgStats.dailyAvg)}</div>
+          <div className="stat-target">ב-4 שבועות אחרונים</div>
+          <div className="stat-bar">
+            <div className="stat-bar-fill" style={{ width: Math.min(100, avgStats.dailyAvg > 0 ? 60 : 0) + '%' }} />
+          </div>
+          <div className="stat-diff" style={{ color: 'var(--text-muted)' }}>לפי ימים שעבדת בפועל</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">ממוצע שבועי</div>
+          <div className="stat-value">{fmtHours(avgStats.weeklyAvg)}</div>
+          <div className="stat-target">ב-4 שבועות אחרונים</div>
+          <div className="stat-bar">
+            <div className="stat-bar-fill" style={{ width: Math.min(100, weekStats.target > 0 ? (avgStats.weeklyAvg / weekStats.target) * 100 : 0) + '%' }} />
+          </div>
+          <div className="stat-diff" style={{ color: 'var(--text-muted)' }}>ממוצע 4 שבועות שלמים</div>
+        </div>
+      </div>
+
       <div className="card">
         <div className="row-between" style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 16, fontWeight: 600 }}>סיכום שבועי</div>
@@ -168,18 +223,20 @@ export default function Dashboard({ user, entries, settings, setSettings, active
             </thead>
             <tbody>
               {daysInRange(weekStart, weekEnd).map(d => {
-                const target = getDailyTarget(d, settings);
+                const target = getPersonalDailyTarget(d, settings, jobPercent, userDaysOff);
                 const isToday = ymd(d) === ymd(today);
                 const worked = getWorkedOnDate(entries, d) + (isToday ? liveAdd : 0);
                 const diff = worked - target;
                 const holidayInfo = getHolidayInfo(d, settings);
+                const isDayOff = userDaysOff.includes(ymd(d));
                 const key = ymd(d);
                 return (
                   <tr key={key}>
                     <td>
                       {HEB_DAYS[d.getDay()]}
                       {isToday && <span className="pill pill-info" style={{ marginRight: 6 }}>היום</span>}
-                      {holidayInfo && (
+                      {isDayOff && <span className="pill pill-muted" style={{ marginRight: 6 }}>חופש</span>}
+                      {!isDayOff && holidayInfo && (
                         <span className={`pill ${holidayInfo.type === 'chag' ? 'pill-danger' : 'pill-warning'}`} style={{ marginRight: 6 }}>
                           {holidayInfo.note}
                         </span>
