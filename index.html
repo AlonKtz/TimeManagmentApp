@@ -1164,7 +1164,7 @@ function getPersonalDailyTarget(date, settings, jobPercent = 100, daysOff = [], 
   const holidayInfo = getHolidayInfo(date, settings);
   if (holidayInfo) {
     const base = customDailyHours?.[dow] ?? (jobPercent >= 100 ? null : Math.round((settings.standardHours?.[0] ?? 9) * jobPercent / 100 * 100) / 100);
-    return base !== null ? Math.round(holidayInfo.hours * (base / (settings.standardHours?.[dow] ?? 9 || 1)) * 100) / 100 : holidayInfo.hours;
+    return base !== null ? Math.round(holidayInfo.hours * (base / ((settings.standardHours?.[dow] ?? 9) || 1)) * 100) / 100 : holidayInfo.hours;
   }
   if (customDailyHours?.[dow] !== undefined && customDailyHours[dow] !== null) {
     return customDailyHours[dow];
