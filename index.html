@@ -830,6 +830,8 @@
 <script type="text/babel">
 const { useState, useEffect, useMemo, useRef } = React;
 
+const APP_VERSION = '1.01';
+
 // ===================== Storage helpers =====================
 const SUPABASE_URL = 'https://yxmbammlzweasjvpouqn.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4bWJhbW1sendlYXNqdnBvdXFuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwOTg0MjgsImV4cCI6MjA5MjY3NDQyOH0.JZfWJcSyGWVQhj2OScCzTpLvEpVly6IQSXfcKQI-YI0';
@@ -1150,26 +1152,29 @@ function sessionDuration(session) {
 }
 
 // Personal daily target — adjusted for job % and days off
-function getPersonalDailyTarget(date, settings, jobPercent = 100, daysOff = []) {
+function getPersonalDailyTarget(date, settings, jobPercent = 100, daysOff = [], customDailyHours = null) {
   if (daysOff.includes(ymd(date))) return 0;
   const dow = date.getDay();
   if (dow === 5 || dow === 6) return 0;
   const holidayInfo = getHolidayInfo(date, settings);
-  if (jobPercent >= 100) {
-    if (holidayInfo) return holidayInfo.hours;
-    return settings.standardHours?.[dow] ?? 0;
+  if (holidayInfo) {
+    const base = customDailyHours?.[dow] ?? (jobPercent >= 100 ? null : Math.round((settings.standardHours?.[0] ?? 9) * jobPercent / 100 * 100) / 100);
+    return base !== null ? Math.round(holidayInfo.hours * (base / (settings.standardHours?.[dow] ?? 9 || 1)) * 100) / 100 : holidayInfo.hours;
   }
+  if (customDailyHours?.[dow] !== undefined && customDailyHours[dow] !== null) {
+    return customDailyHours[dow];
+  }
+  if (jobPercent >= 100) return settings.standardHours?.[dow] ?? 0;
   const pct = jobPercent / 100;
-  const base = settings.standardHours?.[0] ?? 9; // Sunday = base for all days at <100%
-  if (holidayInfo) return Math.round(holidayInfo.hours * pct * 100) / 100;
+  const base = settings.standardHours?.[0] ?? 9;
   return Math.round(base * pct * 100) / 100;
 }
 
-function getPersonalRangeStats(entries, settings, from, to, jobPercent = 100, daysOff = []) {
+function getPersonalRangeStats(entries, settings, from, to, jobPercent = 100, daysOff = [], customDailyHours = null) {
   const days = daysInRange(from, to);
   let target = 0, worked = 0;
   for (const d of days) {
-    target += getPersonalDailyTarget(d, settings, jobPercent, daysOff);
+    target += getPersonalDailyTarget(d, settings, jobPercent, daysOff, customDailyHours);
     worked += getWorkedOnDate(entries, d);
   }
   return { target, worked, diff: worked - target };
@@ -1294,7 +1299,14 @@ function useAuth() {
     } catch(e) { console.error('updateJobPercent:', e); }
   };
 
-  return { currentUser, users, loadUsers, setUsers, register, login, logout, loading, updateJobPercent };
+  const updateCustomHours = async (userId, customDailyHours) => {
+    try {
+      await sb.updateProfile(userId, { custom_daily_hours: customDailyHours });
+      setCurrentUser(u => ({ ...u, custom_daily_hours: customDailyHours }));
+    } catch(e) { console.error('updateCustomHours:', e); }
+  };
+
+  return { currentUser, users, loadUsers, setUsers, register, login, logout, loading, updateJobPercent, updateCustomHours };
 }
 
 // ===================== Login screen =====================
@@ -1816,6 +1828,7 @@ function Dashboard({ user, entries, settings, setSettings, activePunch, onPunch,
   const [location, setLocation] = useState(() => activePunch?.location || DEFAULT_LOCATION);
   const isAdmin = user.role === 'admin';
   const jobPercent = user.job_percent ?? 100;
+  const customDailyHours = user.custom_daily_hours || null;
   const daysOffDates = daysOff.map(d => d.date);
 
   // Keep location in sync with the active punch when starting/stopping
@@ -1830,7 +1843,7 @@ function Dashboard({ user, entries, settings, setSettings, activePunch, onPunch,
   }, [activePunch]);
 
   const today = new Date();
-  const todayTarget = getPersonalDailyTarget(today, settings, jobPercent, daysOffDates);
+  const todayTarget = getPersonalDailyTarget(today, settings, jobPercent, daysOffDates, customDailyHours);
   const todayWorked = getWorkedOnDate(entries, today);
   const liveAdd = activePunch ? sessionDuration({ start: activePunch.start }) : 0;
   const todayTotal = todayWorked + liveAdd;
@@ -1840,14 +1853,14 @@ function Dashboard({ user, entries, settings, setSettings, activePunch, onPunch,
   displayedBase.setDate(displayedBase.getDate() + weekOffset * 7);
   const weekStart = startOfWeek(displayedBase);
   const weekEnd = endOfWeek(displayedBase);
-  const weekStats = getPersonalRangeStats(entries, settings, weekStart, weekEnd, jobPercent, daysOffDates);
+  const weekStats = getPersonalRangeStats(entries, settings, weekStart, weekEnd, jobPercent, daysOffDates, customDailyHours);
   const isCurrentWeek = weekOffset === 0;
   // Live-punch time only counts in the "current" week stat context
   const weekTotal = weekStats.worked + (isCurrentWeek ? liveAdd : 0);
 
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
   const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-  const monthStats = getPersonalRangeStats(entries, settings, monthStart, monthEnd, jobPercent, daysOffDates);
+  const monthStats = getPersonalRangeStats(entries, settings, monthStart, monthEnd, jobPercent, daysOffDates, customDailyHours);
   const monthTotal = monthStats.worked + liveAdd;
 
   // Weekly averages over last 4 complete weeks
@@ -1855,7 +1868,7 @@ function Dashboard({ user, entries, settings, setSettings, activePunch, onPunch,
     let totalWorked = 0, totalTarget = 0;
     for (let w = -1; w >= -4; w--) {
       const base = new Date(today); base.setDate(base.getDate() + w * 7);
-      const ws = getPersonalRangeStats(entries, settings, startOfWeek(base), endOfWeek(base), jobPercent, daysOffDates);
+      const ws = getPersonalRangeStats(entries, settings, startOfWeek(base), endOfWeek(base), jobPercent, daysOffDates, customDailyHours);
       totalWorked += ws.worked; totalTarget += ws.target;
     }
     return { weeklyAvg: totalWorked / 4, dailyAvg: totalWorked / 20 };
@@ -2027,7 +2040,7 @@ function Dashboard({ user, entries, settings, setSettings, activePunch, onPunch,
             </thead>
             <tbody>
               {daysInRange(weekStart, weekEnd).map(d => {
-                const target = getPersonalDailyTarget(d, settings, jobPercent, daysOffDates);
+                const target = getPersonalDailyTarget(d, settings, jobPercent, daysOffDates, customDailyHours);
                 const isToday = ymd(d) === ymd(today);
                 const worked = getWorkedOnDate(entries, d) + (isToday ? liveAdd : 0);
                 const diff = worked - target;
@@ -2110,6 +2123,8 @@ function EntriesTab({ user, entries, setEntries, settings, daysOff = [] }) {
   const [editingId, setEditingId] = useState(null);
   const [flash, setFlash] = useState('');
   const [monthOffset, setMonthOffset] = useState(0);
+  const [showExport, setShowExport] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   const resetForm = () => {
     setDate(ymd(new Date()));
@@ -2202,8 +2217,9 @@ function EntriesTab({ user, entries, setEntries, settings, daysOff = [] }) {
     .sort((a,b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
 
   const jobPercent = user.job_percent ?? 100;
+  const customDailyHours = user.custom_daily_hours || null;
   const daysOffDates = (daysOff || []).map(d => d.date);
-  const monthStats = getPersonalRangeStats(userEntries, settings, viewStart, viewEnd, jobPercent, daysOffDates);
+  const monthStats = getPersonalRangeStats(userEntries, settings, viewStart, viewEnd, jobPercent, daysOffDates, customDailyHours);
 
   return (
     <div>
@@ -2278,6 +2294,13 @@ function EntriesTab({ user, entries, setEntries, settings, daysOff = [] }) {
       </div>
 
       <div className="card">
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+          <div style={{fontWeight:600,fontSize:15}}>הרישומים שלי</div>
+          <div style={{display:'flex',gap:8}}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowImport(true)}>ייבוא CSV</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowExport(true)}>ייצוא CSV</button>
+          </div>
+        </div>
         <div className="period-nav">
           <button className="nav-btn" onClick={() => setMonthOffset(o => o - 1)} aria-label="חודש קודם">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
@@ -2367,6 +2390,23 @@ function EntriesTab({ user, entries, setEntries, settings, daysOff = [] }) {
           </div>
         )}
       </div>
+      {showExport && (
+        <ExportCSVModal
+          entries={userEntries}
+          settings={settings}
+          user={user}
+          onClose={() => setShowExport(false)}
+        />
+      )}
+      {showImport && (
+        <ImportCSVModal
+          onImport={async (imported) => {
+            const merged = [...userEntries.filter(e => !imported.find(i => i.date === e.date && Math.abs(i.hours - e.hours) < 0.01)), ...imported];
+            await setEntries({ ...entries, [user.id]: merged });
+          }}
+          onClose={() => setShowImport(false)}
+        />
+      )}
     </div>
   );
 }
@@ -2793,6 +2833,65 @@ function AccountSettings({ user, auth }) {
         </div>
         <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'שומר...' : 'שמירה'}</button>
       </div>
+
+      <div className="divider" style={{margin:'24px 0'}} />
+
+      <CustomHoursSection user={user} auth={auth} />
+    </div>
+  );
+}
+
+function CustomHoursSection({ user, auth }) {
+  const saved = user.custom_daily_hours || {};
+  const [enabled, setEnabled] = useState(Object.keys(saved).length > 0);
+  const [hours, setHours] = useState({
+    0: saved[0] ?? '', 1: saved[1] ?? '', 2: saved[2] ?? '',
+    3: saved[3] ?? '', 4: saved[4] ?? '',
+  });
+  const [flash, setFlash] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    const payload = enabled
+      ? Object.fromEntries(Object.entries(hours).map(([k,v]) => [k, v === '' ? null : parseFloat(v)]))
+      : null;
+    await auth.updateCustomHours(user.id, payload);
+    setFlash('נשמר');
+    setTimeout(() => setFlash(''), 2000);
+    setBusy(false);
+  };
+
+  return (
+    <div>
+      <div className="admin-section-title" style={{marginBottom:8}}>שעות יומיות מותאמות אישית</div>
+      <div style={{color:'var(--text-muted)',fontSize:13,marginBottom:12}}>
+        עקוף את שעות ברירת המחדל בימים ספציפיים. כשמופעל, הגדרות אלו גוברות על אחוזי המשרה.
+      </div>
+      {flash && <div className="form-success" style={{marginBottom:12}}>{flash}</div>}
+      <label style={{display:'flex',alignItems:'center',gap:8,marginBottom:14,cursor:'pointer'}}>
+        <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
+        <span style={{fontSize:14}}>הפעל שעות מותאמות אישית</span>
+      </label>
+      {enabled && (
+        <div className="admin-day-grid" style={{marginBottom:14}}>
+          {[0,1,2,3,4].map(dow => (
+            <div className="admin-day-card" key={dow}>
+              <div className="day-name">יום {HEB_DAYS[dow]}</div>
+              <div className="day-hours-input">
+                <input
+                  type="number" step="0.25" min="0" max="24"
+                  value={hours[dow]}
+                  placeholder={String(user.custom_daily_hours?.[dow] ?? '—')}
+                  onChange={e => setHours(h => ({...h, [dow]: e.target.value}))}
+                />
+                <span>שעות</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy?'שומר...':'שמירה'}</button>
     </div>
   );
 }
@@ -2903,7 +3002,8 @@ function QuarterlyView({ entries, settings, user }) {
   const rows = quarters.map((q, i) => {
     const isFuture = q.from > today;
     const isCurrent = today >= q.from && today <= q.to;
-    const stats = getPersonalRangeStats(entries, settings, q.from, q.to, jobPercent, []);
+    const customDailyHours = user.custom_daily_hours || null;
+    const stats = getPersonalRangeStats(entries, settings, q.from, q.to, jobPercent, [], customDailyHours);
     const carryIn = i === 0 ? 0 : runningDiff;
     const adjWorked = stats.worked + carryIn;
     const diff = adjWorked - stats.target;
@@ -2965,6 +3065,216 @@ function QuarterlyView({ entries, settings, user }) {
   );
 }
 
+// ===================== Export CSV =====================
+function ExportCSVModal({ entries, settings, user, onClose }) {
+  const [level, setLevel] = useState('monthly');
+  const jobPercent = user.job_percent ?? 100;
+  const customDailyHours = user.custom_daily_hours || null;
+  const today = new Date();
+
+  const buildCSV = () => {
+    const rows = [['תאריך','יום','שעות','כניסה','יציאה','מיקום','הערה']];
+    let filtered = [...entries].sort((a,b) => a.date.localeCompare(b.date));
+
+    if (level === 'monthly') {
+      const ms = new Date(today.getFullYear(), today.getMonth(), 1);
+      const me = new Date(today.getFullYear(), today.getMonth()+1, 0);
+      filtered = filtered.filter(e => { const d = parseYmd(e.date); return d >= ms && d <= me; });
+    } else if (level === 'quarterly') {
+      const q = Math.floor(today.getMonth() / 3);
+      const qs = new Date(today.getFullYear(), q*3, 1);
+      const qe = new Date(today.getFullYear(), q*3+3, 0);
+      filtered = filtered.filter(e => { const d = parseYmd(e.date); return d >= qs && d <= qe; });
+    } else {
+      filtered = filtered.filter(e => e.date.startsWith(String(today.getFullYear())));
+    }
+
+    for (const e of filtered) {
+      const d = parseYmd(e.date);
+      rows.push([
+        `${d.getDate()}.${d.getMonth()+1}.${d.getFullYear()}`,
+        HEB_DAYS[d.getDay()],
+        e.hours,
+        e.start || '',
+        e.end || '',
+        e.location === 'home' ? 'מהבית' : 'מהמשרד',
+        e.note || '',
+      ]);
+    }
+
+    // Summary rows
+    const totalHours = filtered.reduce((s,e) => s+e.hours, 0);
+    rows.push([]);
+    rows.push(['סה"כ שעות', fmtHours(totalHours), '', '', '', '', '']);
+
+    return rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  };
+
+  const download = () => {
+    const csv = buildCSV();
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const labels = { monthly: 'חודשי', quarterly: 'רבעוני', yearly: 'שנתי' };
+    a.download = `שעות_${labels[level]}_${ymd(today)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    onClose();
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-title">ייצוא CSV</div>
+        <div className="form-group">
+          <label className="form-label">רמת סיכום</label>
+          <select value={level} onChange={e => setLevel(e.target.value)}>
+            <option value="monthly">חודשי — החודש הנוכחי</option>
+            <option value="quarterly">רבעוני — הרבעון הנוכחי</option>
+            <option value="yearly">שנתי — כל השנה</option>
+          </select>
+        </div>
+        <div className="form-actions">
+          <button className="btn btn-primary" onClick={download}>הורד CSV</button>
+          <button className="btn btn-secondary" onClick={onClose}>ביטול</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===================== Import CSV =====================
+function ImportCSVModal({ onImport, onClose }) {
+  const [preview, setPreview] = useState(null);
+  const [error, setError] = useState('');
+
+  const parseCSV = (text) => {
+    const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
+    return lines.map(line => {
+      const cols = [];
+      let cur = '', inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === '"') { inQ = !inQ; }
+        else if (c === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
+        else cur += c;
+      }
+      cols.push(cur.trim());
+      return cols;
+    });
+  };
+
+  const detectAndParse = (rows) => {
+    if (rows.length < 2) return null;
+    const header = rows[0].map(h => h.toLowerCase().replace(/"/g,'').trim());
+    const find = (...keys) => {
+      for (const k of keys) { const i = header.findIndex(h => h.includes(k)); if (i >= 0) return i; }
+      return -1;
+    };
+    const dateIdx  = find('תאריך','date','ymd');
+    const startIdx = find('כניסה','start','from','התחלה');
+    const endIdx   = find('יציאה','end','to','סיום');
+    const hoursIdx = find('שעות','hours','total','סה');
+    const noteIdx  = find('הערה','note','notes');
+    if (dateIdx < 0) return null;
+
+    const entries = [];
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row[dateIdx]) continue;
+      let dateStr = row[dateIdx].replace(/"/g,'').trim();
+      // Parse DD.MM.YYYY or YYYY-MM-DD
+      let isoDate;
+      if (dateStr.includes('.')) {
+        const [d,m,y] = dateStr.split('.').map(Number);
+        isoDate = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      } else { isoDate = dateStr.slice(0,10); }
+      if (!isoDate || isoDate.length < 10) continue;
+
+      let hours = 0, start = null, end = null, mode = 'hours';
+      const startStr = startIdx >= 0 ? row[startIdx]?.replace(/"/g,'').trim() : '';
+      const endStr   = endIdx   >= 0 ? row[endIdx]?.replace(/"/g,'').trim()   : '';
+      if (startStr && endStr) {
+        const s = timeStrToHours(startStr), e = timeStrToHours(endStr);
+        if (e > s) { hours = Math.round((e-s)*100)/100; start = startStr; end = endStr; mode = 'range'; }
+      }
+      if (!hours && hoursIdx >= 0) {
+        hours = parseFloat(row[hoursIdx]?.replace(/"/g,'').replace(':','.')) || 0;
+      }
+      if (!hours) continue;
+      entries.push({
+        id: 'imp_' + Date.now() + '_' + Math.random().toString(36).slice(2,6) + i,
+        date: isoDate, hours, start, end, mode,
+        note: noteIdx >= 0 ? (row[noteIdx]?.replace(/"/g,'').trim() || '') : 'יובא מ-CSV',
+        location: 'office',
+        createdAt: new Date().toISOString(),
+      });
+    }
+    return entries;
+  };
+
+  const onFile = (e) => {
+    setError(''); setPreview(null);
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const rows = parseCSV(ev.target.result);
+        const entries = detectAndParse(rows);
+        if (!entries || entries.length === 0) { setError('לא ניתן לזהות שורות תקינות בקובץ'); return; }
+        setPreview(entries);
+      } catch { setError('שגיאה בקריאת הקובץ'); }
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
+  const doImport = () => { onImport(preview); onClose(); };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" style={{maxWidth:560}} onClick={e => e.stopPropagation()}>
+        <div className="modal-title">ייבוא CSV</div>
+        <div style={{fontSize:13,color:'var(--text-muted)',marginBottom:12}}>
+          העלה קובץ CSV עם עמודות תאריך, כניסה, יציאה (או שעות). המערכת תזהה אוטומטית.
+        </div>
+        {error && <div className="form-error">{error}</div>}
+        <div className="form-group">
+          <input type="file" accept=".csv,.txt" onChange={onFile} />
+        </div>
+        {preview && (
+          <div>
+            <div style={{fontSize:13,color:'var(--success)',marginBottom:8}}>
+              זוהו {preview.length} רישומים — תצוגה מקדימה (5 ראשונים):
+            </div>
+            <div className="table-wrap" style={{maxHeight:160,overflow:'auto',marginBottom:12}}>
+              <table className="data" style={{fontSize:12}}>
+                <thead><tr><th>תאריך</th><th>שעות</th><th>כניסה–יציאה</th><th>הערה</th></tr></thead>
+                <tbody>
+                  {preview.slice(0,5).map(e => (
+                    <tr key={e.id}>
+                      <td>{e.date}</td>
+                      <td>{fmtHours(e.hours)}</td>
+                      <td style={{fontSize:11}}>{e.start && e.end ? `${e.start}–${e.end}` : '—'}</td>
+                      <td style={{fontSize:11}}>{e.note}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="form-actions">
+              <button className="btn btn-primary" onClick={doImport}>ייבא {preview.length} רישומים</button>
+              <button className="btn btn-secondary" onClick={onClose}>ביטול</button>
+            </div>
+          </div>
+        )}
+        {!preview && <div className="form-actions"><button className="btn btn-secondary" onClick={onClose}>ביטול</button></div>}
+      </div>
+    </div>
+  );
+}
+
 // ===================== Main app =====================
 function App() {
   const auth = useAuth();
@@ -3006,7 +3316,10 @@ CREATE TABLE IF NOT EXISTS days_off (
 ALTER TABLE days_off ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "users_days_off" ON days_off
   FOR ALL USING (user_id = auth.uid())
-  WITH CHECK (user_id = auth.uid());`;
+  WITH CHECK (user_id = auth.uid());
+
+-- 3. Add custom daily hours per user
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS custom_daily_hours JSONB;`;
 
   // Load entries + settings when user logs in
   useEffect(() => {
@@ -3029,6 +3342,11 @@ CREATE POLICY "users_days_off" ON days_off
       await sb.select('profiles', 'select=job_percent&limit=1');
       setDbSetup(s => ({ ...s, jobPercent: true }));
     } catch(e) { setDbSetup(s => ({ ...s, jobPercent: false })); }
+    // Check custom_daily_hours column
+    try {
+      await sb.select('profiles', 'select=custom_daily_hours&limit=1');
+      setDbSetup(s => ({ ...s, customHours: true }));
+    } catch(e) { setDbSetup(s => ({ ...s, customHours: false })); }
   };
 
   const loadDaysOff = async () => {
@@ -3276,6 +3594,7 @@ CREATE POLICY "users_days_off" ON days_off
             </svg>
           </div>
           מעקב שעות צוות
+          <span style={{fontSize:11,color:'var(--text-soft)',fontWeight:400,marginRight:6}}>v{APP_VERSION}</span>
         </div>
         <div className="topbar-user">
           <div className="user-chip">
