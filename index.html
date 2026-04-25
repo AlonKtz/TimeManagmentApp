@@ -788,6 +788,14 @@ const sb = {
     });
     this._token = null;
   },
+  async refreshSession(refreshToken) {
+    const r = await fetch(`${this._url}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    return r.json();
+  },
   async getUser() {
     if (!this._token) return null;
     const r = await fetch(`${this._url}/auth/v1/user`, { headers: this.headers() });
@@ -844,8 +852,12 @@ const sb = {
 const loadPunch = () => { try { return JSON.parse(localStorage.getItem('tt_punch') || 'null'); } catch { return null; } };
 const savePunch = v => v ? localStorage.setItem('tt_punch', JSON.stringify(v)) : localStorage.removeItem('tt_punch');
 // Session token persisted locally
-const loadToken = () => localStorage.getItem('tt_token');
-const saveToken = t => t ? localStorage.setItem('tt_token', t) : localStorage.removeItem('tt_token');
+const loadToken = () => {
+  try { return JSON.parse(localStorage.getItem('tt_session') || 'null'); } catch { return null; }
+};
+const saveToken = (s) => s
+  ? localStorage.setItem('tt_session', JSON.stringify(s))
+  : localStorage.removeItem('tt_session');
 
 // ===================== Date helpers =====================
 const HEB_DAYS = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
@@ -1057,12 +1069,23 @@ function useAuth() {
 
   // Restore session on mount
   useEffect(() => {
-    const token = loadToken();
-    if (token) {
-      sb._token = token;
+    const session = loadToken();
+    if (session?.access_token) {
+      sb._token = session.access_token;
       sb.getUser().then(async u => {
         if (u?.id) {
           await refreshProfile(u.id);
+        } else if (session.refresh_token) {
+          // Access token expired — try to refresh
+          const res = await sb.refreshSession(session.refresh_token);
+          if (res.access_token) {
+            sb._token = res.access_token;
+            saveToken({ access_token: res.access_token, refresh_token: res.refresh_token });
+            await refreshProfile(res.user.id);
+          } else {
+            saveToken(null);
+            setLoading(false);
+          }
         } else {
           saveToken(null);
           setLoading(false);
@@ -1076,8 +1099,15 @@ function useAuth() {
   const refreshProfile = async (userId) => {
     try {
       const rows = await sb.select('profiles', `id=eq.${userId}`);
-      if (rows[0]) setCurrentUser(rows[0]);
-    } catch {}
+      if (rows[0]) {
+        setCurrentUser(rows[0]);
+      } else {
+        // Profile not created yet by trigger — wait and retry once
+        await new Promise(r => setTimeout(r, 1500));
+        const rows2 = await sb.select('profiles', `id=eq.${userId}`);
+        if (rows2[0]) setCurrentUser(rows2[0]);
+      }
+    } catch(e) { console.error('profile load:', e); }
     setLoading(false);
   };
 
@@ -1091,7 +1121,7 @@ function useAuth() {
     // Session may come back immediately if email confirmation is disabled
     if (res.access_token) {
       sb._token = res.access_token;
-      saveToken(res.access_token);
+      saveToken({ access_token: res.access_token, refresh_token: res.refresh_token });
       await refreshProfile(res.user.id);
     }
     return { ok: true, needsConfirm: !res.access_token };
@@ -1102,7 +1132,7 @@ function useAuth() {
     const res = await sb.signIn(email, password);
     if (res.error) return { error: 'אימייל או סיסמה שגויים' };
     sb._token = res.access_token;
-    saveToken(res.access_token);
+    saveToken({ access_token: res.access_token, refresh_token: res.refresh_token });
     await refreshProfile(res.user.id);
     return { ok: true };
   };
