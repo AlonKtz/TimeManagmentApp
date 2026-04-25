@@ -3,7 +3,7 @@ name: Daily QA Check
 on:
   schedule:
     - cron: '0 6 * * *'   # 06:00 UTC = 09:00 Israel time
-  workflow_dispatch:       # allow manual trigger
+  workflow_dispatch: {}    # allow manual trigger
 
 jobs:
   qa:
