@@ -776,6 +776,19 @@
   }
   .pct-option.active { border-color: var(--primary); background: var(--primary-soft); }
   .pct-option input[type="radio"] { display: none; }
+
+  /* ===== DB setup banner ===== */
+  .setup-banner {
+    background: var(--warning-soft); border: 1px solid #78450a;
+    border-radius: var(--radius); padding: 18px 20px; margin-bottom: 20px;
+  }
+  .setup-banner-title { font-weight: 600; color: var(--warning); margin-bottom: 6px; font-size: 15px; }
+  .setup-sql {
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 12px; font-family: monospace; font-size: 12px; color: var(--text-muted);
+    white-space: pre; overflow-x: auto; margin: 10px 0; max-height: 180px; overflow-y: auto;
+    line-height: 1.6;
+  }
 </style>
 </head>
 <body>
@@ -2908,6 +2921,9 @@ function App() {
   // ---- Days off ----
   const [daysOff, setDaysOffState] = useState([]);
 
+  // ---- DB setup state (null=unknown, true=ok, false=missing) ----
+  const [dbSetup, setDbSetup] = useState({ daysOff: null, jobPercent: null });
+
   // ---- Active punch (device-local, ephemeral) ----
   const [activePunch, setActivePunchState] = useState(() => loadPunch());
 
@@ -2916,20 +2932,51 @@ function App() {
 
   const user = auth.currentUser;
 
+  const DB_SETUP_SQL =
+`-- 1. הוסף עמודת אחוז משרה לפרופילים
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS job_percent INTEGER DEFAULT 100;
+
+-- 2. צור טבלת ימי חופש
+CREATE TABLE IF NOT EXISTS days_off (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  note TEXT DEFAULT '',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE days_off ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users_days_off" ON days_off
+  FOR ALL USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());`;
+
   // Load entries + settings when user logs in
   useEffect(() => {
     if (!user) { setEntriesState([]); setEntriesLoaded(false); setDaysOffState([]); return; }
     loadEntries();
     loadSettings();
     loadDaysOff();
+    checkDbSetup();
     if (user.role === 'admin') auth.loadUsers();
   }, [user?.id]);
+
+  const checkDbSetup = async () => {
+    // Check days_off table
+    try {
+      await sb.select('days_off', 'limit=1');
+      setDbSetup(s => ({ ...s, daysOff: true }));
+    } catch(e) { setDbSetup(s => ({ ...s, daysOff: false })); }
+    // Check job_percent column
+    try {
+      await sb.select('profiles', 'select=job_percent&limit=1');
+      setDbSetup(s => ({ ...s, jobPercent: true }));
+    } catch(e) { setDbSetup(s => ({ ...s, jobPercent: false })); }
+  };
 
   const loadDaysOff = async () => {
     try {
       const rows = await sb.select('days_off', `user_id=eq.${user.id}&order=date.desc`);
       setDaysOffState(rows);
-    } catch(e) { console.error('days_off load:', e); setDaysOffState([]); }
+    } catch(e) { setDaysOffState([]); }
   };
 
   const handleAddDayOff = async ({ date, note }) => {
@@ -2947,6 +2994,14 @@ function App() {
       await sb.delete('days_off', 'id', id);
       setDaysOffState(prev => prev.filter(d => d.id !== id));
     } catch(e) { console.error('delete day off:', e); }
+  };
+
+  const dbNeedsSetup = dbSetup.daysOff === false || dbSetup.jobPercent === false;
+  const [sqlCopied, setSqlCopied] = useState(false);
+  const copySql = () => {
+    navigator.clipboard.writeText(DB_SETUP_SQL).then(() => {
+      setSqlCopied(true); setTimeout(() => setSqlCopied(false), 2500);
+    });
   };
 
   const loadEntries = async () => {
@@ -3180,6 +3235,32 @@ function App() {
           </button>
         ))}
       </div>
+
+      {user.role === 'admin' && dbNeedsSetup && (
+        <div className="setup-banner">
+          <div className="setup-banner-title">⚙️ נדרשת הגדרה חד-פעמית של מסד הנתונים</div>
+          <div style={{fontSize:13, color:'var(--text-muted)', marginBottom:10}}>
+            כדי לאפשר ימי חופש ואחוזי משרה יש להריץ את ה-SQL הבא ב-Supabase SQL Editor.
+          </div>
+          <div className="setup-sql">{DB_SETUP_SQL}</div>
+          <div style={{display:'flex', gap:10, flexWrap:'wrap'}}>
+            <button className="btn btn-primary btn-sm" onClick={copySql}>
+              {sqlCopied ? '✓ הועתק!' : 'העתק SQL'}
+            </button>
+            <a
+              href="https://app.supabase.com/project/yxmbammlzweasjvpouqn/sql/new"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-secondary btn-sm"
+            >
+              פתח Supabase SQL Editor ↗
+            </a>
+            <button className="btn btn-ghost btn-sm" onClick={checkDbSetup}>
+              בדוק שוב לאחר ההרצה
+            </button>
+          </div>
+        </div>
+      )}
 
       {tab === 'dashboard' && (
         <Dashboard
