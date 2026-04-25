@@ -1130,7 +1130,7 @@ function useAuth() {
   const login = async ({ email, password }) => {
     email = (email || '').trim().toLowerCase();
     const res = await sb.signIn(email, password);
-    if (res.error) return { error: 'אימייל או סיסמה שגויים' };
+    if (res.error || !res.access_token) return { error: 'אימייל או סיסמה שגויים' };
     sb._token = res.access_token;
     saveToken({ access_token: res.access_token, refresh_token: res.refresh_token });
     await refreshProfile(res.user.id);
