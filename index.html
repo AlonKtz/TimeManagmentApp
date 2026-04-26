@@ -1610,7 +1610,19 @@ function useAuth() {
     try {
       await sb.updateProfile(userId, config);
       setCurrentUser(u => ({ ...u, ...config }));
-    } catch(e) { console.error('updateSalaryConfig:', e); }
+    } catch(e) {
+      // credit_points column may not exist yet — retry without it
+      if (config.credit_points !== undefined) {
+        try {
+          const { credit_points, ...rest } = config;
+          await sb.updateProfile(userId, rest);
+          setCurrentUser(u => ({ ...u, ...rest }));
+          console.warn('updateSalaryConfig: credit_points column missing, saved without it');
+        } catch(e2) { console.error('updateSalaryConfig:', e2); }
+      } else {
+        console.error('updateSalaryConfig:', e);
+      }
+    }
   };
 
   return { currentUser, users, loadUsers, setUsers, register, login, logout, loading, updateJobPercent, updateCustomHours, updateSalaryConfig };
@@ -4164,7 +4176,7 @@ END $$;`;
       JSON.stringify(e) !== JSON.stringify(entries.find(x => x.id === e.id))
     );
     for (const e of toUpsert) {
-      await sb.upsert('time_entries', {
+      const basePayload = {
         id: e.id,
         user_id: user.id,
         date: e.date,
@@ -4176,10 +4188,22 @@ END $$;`;
         location: e.location || DEFAULT_LOCATION,
         via_punch: e.viaPunch || false,
         expenses: e.expenses || [],
-        tips: parseFloat(e.tips) || 0,
-        shift_bonus: parseFloat(e.shift_bonus) || 0,
         created_at: e.createdAt || new Date().toISOString(),
-      }, 'id');
+      };
+      if (dbSetup.tips !== false) {
+        try {
+          await sb.upsert('time_entries', {
+            ...basePayload,
+            tips: parseFloat(e.tips) || 0,
+            shift_bonus: parseFloat(e.shift_bonus) || 0,
+          }, 'id');
+          continue;
+        } catch(err) {
+          // Column doesn't exist yet — fall back to base payload and show DB setup banner
+          setDbSetup(s => ({ ...s, tips: false }));
+        }
+      }
+      await sb.upsert('time_entries', basePayload, 'id');
     }
     setEntriesState(nextEntries);
   };
