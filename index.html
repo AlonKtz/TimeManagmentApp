@@ -4344,19 +4344,24 @@ END $$;`;
   // ---- Entries CRUD ----
   const saveEntries = async (nextEntries) => {
     // Called by EntriesTab with full updated array. Diff vs current to upsert/delete.
-    const currentIds = new Set(entries.map(e => e.id));
+    // Optimistic update first — UI reflects change immediately regardless of DB result.
+    const prevEntries = entries;
+    setEntriesState(nextEntries);
+
+    const currentIds = new Set(prevEntries.map(e => e.id));
     const nextIds = new Set(nextEntries.map(e => e.id));
 
     // Deleted
     const deletedIds = [...currentIds].filter(id => !nextIds.has(id));
     for (const id of deletedIds) {
-      await sb.delete('time_entries', 'id', id);
+      try { await sb.delete('time_entries', 'id', id); }
+      catch(err) { console.error('delete entry:', err); }
     }
 
     // Upserted (new or changed)
     const toUpsert = nextEntries.filter(e =>
       !currentIds.has(e.id) ||
-      JSON.stringify(e) !== JSON.stringify(entries.find(x => x.id === e.id))
+      JSON.stringify(e) !== JSON.stringify(prevEntries.find(x => x.id === e.id))
     );
     for (const e of toUpsert) {
       const basePayload = {
@@ -4386,9 +4391,12 @@ END $$;`;
           setDbSetup(s => ({ ...s, tips: false }));
         }
       }
-      await sb.upsert('time_entries', basePayload, 'id');
+      try {
+        await sb.upsert('time_entries', basePayload, 'id');
+      } catch(err) {
+        console.error('upsert entry:', err);
+      }
     }
-    setEntriesState(nextEntries);
   };
 
   // EntriesTab passes { userId: [entries] } — flatten to array
