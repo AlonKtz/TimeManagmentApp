@@ -1016,7 +1016,6 @@
     /* Period nav: compact */
     .period-nav { gap: 4px; }
 
-    /* DaysOff add form */
     .card { padding: 14px 12px; }
   }
 </style>
@@ -1363,16 +1362,6 @@ function getWorkedOnDate(entries, date) {
   return entries
     .filter(e => e.date === key)
     .reduce((sum, e) => sum + (e.hours || 0), 0);
-}
-
-function getRangeStats(entries, settings, from, to) {
-  const days = daysInRange(from, to);
-  let target = 0, worked = 0;
-  for (const d of days) {
-    target += getDailyTarget(d, settings);
-    worked += getWorkedOnDate(entries, d);
-  }
-  return { target, worked, diff: worked - target };
 }
 
 function sessionDuration(session) {
@@ -3735,95 +3724,6 @@ function CustomHoursSection({ user, auth }) {
 }
 
 // ===================== Days off =====================
-function DaysOff({ daysOff, onAdd, onDelete }) {
-  const [monthOffset, setMonthOffset] = useState(0);
-  const [date, setDate] = useState(ymd(new Date()));
-  const [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  const now = new Date();
-  const viewDate = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
-  const viewStart = viewDate;
-  const viewEnd = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0);
-  const monthDaysOff = daysOff
-    .filter(d => { const dt = parseYmd(d.date); return dt >= viewStart && dt <= viewEnd; })
-    .sort((a, b) => b.date.localeCompare(a.date));
-
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!date) return;
-    setBusy(true);
-    await onAdd({ date, note: note.trim() });
-    setNote('');
-    setBusy(false);
-  };
-
-  return (
-    <div>
-      <div className="card" style={{marginBottom:20}}>
-        <div className="card-title">הוספת יום חופש</div>
-        <form onSubmit={submit}>
-          <div className="form-row">
-            <div>
-              <label className="form-label">תאריך</label>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
-            </div>
-            <div>
-              <label className="form-label">הערה (אופציונלי)</label>
-              <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="חופשה, מחלה, נסיעה..." />
-            </div>
-          </div>
-          <div className="form-actions">
-            <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'שומר...' : 'הוספה'}</button>
-          </div>
-        </form>
-      </div>
-      <div className="card">
-        <div className="period-nav">
-          <button className="nav-btn" onClick={() => setMonthOffset(o => o-1)} aria-label="חודש קודם">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
-          <div className="current">{HEB_MONTHS[viewDate.getMonth()]} {viewDate.getFullYear()}</div>
-          <button className="nav-btn" onClick={() => setMonthOffset(o => o+1)} aria-label="חודש הבא">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-          </button>
-        </div>
-        {monthDaysOff.length === 0 ? (
-          <div className="empty">
-            <div className="empty-icon">🏖️</div>
-            <div className="empty-title">אין ימי חופש בחודש זה</div>
-          </div>
-        ) : (
-          <div className="table-wrap">
-            <table className="data">
-              <thead><tr><th>תאריך</th><th>יום</th><th>הערה</th><th style={{textAlign:'left'}}>פעולות</th></tr></thead>
-              <tbody>
-                {monthDaysOff.map(d => {
-                  const dt = parseYmd(d.date);
-                  return (
-                    <tr key={d.id || d.date}>
-                      <td>{fmtDateIL(dt)}</td>
-                      <td>{HEB_DAYS[dt.getDay()]}</td>
-                      <td style={{color:'var(--text-muted)',fontSize:13}}>{d.note || '—'}</td>
-                      <td>
-                        <div className="actions-inline">
-                          <button className="icon-btn danger" onClick={() => onDelete(d.id)} title="מחיקה">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ===================== Quarterly view =====================
 function QuarterlyView({ entries, settings, user }) {
   const jobPercent = user.job_percent ?? 100;
@@ -4224,11 +4124,6 @@ END $$;`;
       await sb.select('profiles', 'select=job_percent&limit=1');
       setDbSetup(s => ({ ...s, jobPercent: true }));
     } catch(e) { setDbSetup(s => ({ ...s, jobPercent: false })); }
-    // Check custom_daily_hours column
-    try {
-      await sb.select('profiles', 'select=custom_daily_hours&limit=1');
-      setDbSetup(s => ({ ...s, customHours: true }));
-    } catch(e) { setDbSetup(s => ({ ...s, customHours: false })); }
     // Check salary columns
     try {
       await sb.select('profiles', 'select=salary_type,hourly_rate,base_salary&limit=1');
@@ -4244,16 +4139,6 @@ END $$;`;
       await sb.select('time_entries', 'select=tips,shift_bonus&limit=1');
       setDbSetup(s => ({ ...s, tips: true }));
     } catch(e) { setDbSetup(s => ({ ...s, tips: false })); }
-    // Check credit_points column
-    try {
-      await sb.select('profiles', 'select=credit_points&limit=1');
-      setDbSetup(s => ({ ...s, creditPoints: true }));
-    } catch(e) { setDbSetup(s => ({ ...s, creditPoints: false })); }
-    // Check pension columns
-    try {
-      await sb.select('profiles', 'select=pension_rate,study_fund_rate,pensionable_pct&limit=1');
-      setDbSetup(s => ({ ...s, pension: true }));
-    } catch(e) { setDbSetup(s => ({ ...s, pension: false })); }
   };
 
   const loadDaysOff = async () => {
@@ -4261,23 +4146,6 @@ END $$;`;
       const rows = await sb.select('days_off', `user_id=eq.${user.id}&order=date.desc`);
       setDaysOffState(rows);
     } catch(e) { setDaysOffState([]); }
-  };
-
-  const handleAddDayOff = async ({ date, note }) => {
-    try {
-      const id = 'do_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
-      const row = { id, user_id: user.id, date, note: note || '', created_at: new Date().toISOString() };
-      const [saved] = await sb.upsert('days_off', row, 'id');
-      setDaysOffState(prev => [saved || row, ...prev].sort((a,b) => b.date.localeCompare(a.date)));
-    } catch(e) { console.error('add day off:', e); }
-  };
-
-  const handleDeleteDayOff = async (id) => {
-    if (!confirm('למחוק יום חופש זה?')) return;
-    try {
-      await sb.delete('days_off', 'id', id);
-      setDaysOffState(prev => prev.filter(d => d.id !== id));
-    } catch(e) { console.error('delete day off:', e); }
   };
 
   // pension/creditPoints handled defensively in saveEntries/updateSalaryConfig — not required for banner
@@ -4627,7 +4495,6 @@ END $$;`;
           daysOff={daysOff}
         />
       )}
-      {/* DaysOff tab removed — vacation/sick logged as location entries */}
       {tab === 'quarterly' && (
         <QuarterlyView
           entries={entries}
