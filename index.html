@@ -2844,6 +2844,16 @@ function EntriesTab({ user, entries, setEntries, settings, daysOff = [] }) {
   const [showSmartFill, setShowSmartFill] = useState(false);
   const isHourly = (user.salary_type || 'hourly') !== 'global';
 
+  // When location = vacation/sick, auto-fill with daily target hours
+  const isLeave = location === 'vacation' || location === 'sick';
+  useEffect(() => {
+    if (!isLeave) return;
+    const d = parseYmd(date);
+    const target = getPersonalDailyTarget(d, settings, user.job_percent ?? 100, (daysOff||[]).map(x=>x.date), user.custom_daily_hours||null);
+    setMode('hours');
+    setHours(String(target > 0 ? target : 8));
+  }, [isLeave, date, settings, user.job_percent, user.custom_daily_hours]);
+
   const resetForm = () => {
     setDate(ymd(new Date()));
     setStartT('09:00'); setEndT('18:00'); setHours('9'); setNote('');
@@ -2856,7 +2866,8 @@ function EntriesTab({ user, entries, setEntries, settings, daysOff = [] }) {
     e.preventDefault();
     let computedHours = 0;
     let start = null, end = null;
-    if (mode === 'range') {
+    const effectiveMode = isLeave ? 'hours' : mode;
+    if (effectiveMode === 'range') {
       const s = timeStrToHours(startT);
       const e2 = timeStrToHours(endT);
       computedHours = e2 - s;
@@ -2867,7 +2878,7 @@ function EntriesTab({ user, entries, setEntries, settings, daysOff = [] }) {
       start = startT; end = endT;
     } else {
       const n = parseFloat(hours);
-      if (isNaN(n) || n <= 0 || n > 24) {
+      if (isNaN(n) || n < 0 || n > 24) {
         alert('הזן מספר שעות תקין (בין 0 ל־24)');
         return;
       }
@@ -2883,7 +2894,7 @@ function EntriesTab({ user, entries, setEntries, settings, daysOff = [] }) {
       start,
       end,
       note: note.trim(),
-      mode,
+      mode: effectiveMode,
       location,
       tips: parseFloat(tips) || 0,
       shift_bonus: parseFloat(shiftBonus) || 0,
@@ -2963,16 +2974,23 @@ function EntriesTab({ user, entries, setEntries, settings, daysOff = [] }) {
               <label className="form-label">תאריך</label>
               <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
             </div>
-            <div>
-              <label className="form-label">סוג הרישום</label>
-              <select value={mode} onChange={e => setMode(e.target.value)}>
-                <option value="range">לפי שעות כניסה/יציאה</option>
-                <option value="hours">מספר שעות ישירות</option>
-              </select>
-            </div>
+            {!isLeave && (
+              <div>
+                <label className="form-label">סוג הרישום</label>
+                <select value={mode} onChange={e => setMode(e.target.value)}>
+                  <option value="range">לפי שעות כניסה/יציאה</option>
+                  <option value="hours">מספר שעות ישירות</option>
+                </select>
+              </div>
+            )}
           </div>
 
-          {mode === 'range' ? (
+          {isLeave ? (
+            <div style={{padding:'10px 14px',background:'var(--surface-2)',borderRadius:'var(--radius-sm)',marginBottom:16,fontSize:13,color:'var(--text-muted)'}}>
+              {location === 'vacation' ? '🏖️ חופשה' : '🤒 מחלה'} — שעות יזוכו לפי יעד יומי אישי:&nbsp;
+              <strong style={{color:'var(--text)'}}>{fmtHours(parseFloat(hours)||0)}</strong>
+            </div>
+          ) : mode === 'range' ? (
             <div className="form-row">
               <div>
                 <label className="form-label">כניסה</label>
@@ -3004,10 +3022,10 @@ function EntriesTab({ user, entries, setEntries, settings, daysOff = [] }) {
 
           <div className="form-group">
             <label className="form-label">הערה (אופציונלי)</label>
-            <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="לדוגמה: פגישת צוות, פרויקט X..." />
+            <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder={isLeave ? 'לדוגמה: חופשת קיץ, מחלה...' : 'לדוגמה: פגישת צוות, פרויקט X...'} />
           </div>
 
-          {isHourly && (
+          {isHourly && !isLeave && (
             <div className="form-row">
               <div>
                 <label className="form-label">טיפים (₪)</label>
