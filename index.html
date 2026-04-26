@@ -4271,7 +4271,8 @@ END $$;`;
     } catch(e) { console.error('delete day off:', e); }
   };
 
-  const dbNeedsSetup = dbSetup.daysOff === false || dbSetup.jobPercent === false || dbSetup.salary === false || dbSetup.expenses === false || dbSetup.tips === false || dbSetup.creditPoints === false || dbSetup.pension === false;
+  // pension/creditPoints handled defensively in saveEntries/updateSalaryConfig — not required for banner
+  const dbNeedsSetup = (dbSetup.daysOff === false || dbSetup.jobPercent === false || dbSetup.salary === false || dbSetup.expenses === false || dbSetup.tips === false) && !localStorage.getItem('tt_db_dismissed');
   const [sqlCopied, setSqlCopied] = useState(false);
   const copySql = () => {
     navigator.clipboard.writeText(DB_SETUP_SQL).then(() => {
@@ -4579,6 +4580,9 @@ END $$;`;
             </a>
             <button className="btn btn-ghost btn-sm" onClick={checkDbSetup}>
               בדוק שוב לאחר ההרצה
+            </button>
+            <button className="btn btn-ghost btn-sm" style={{marginRight:'auto',color:'var(--text-muted)'}} onClick={() => { localStorage.setItem('tt_db_dismissed','1'); checkDbSetup(); }}>
+              ✕ הרצתי — סגור לצמיתות
             </button>
           </div>
         </div>
