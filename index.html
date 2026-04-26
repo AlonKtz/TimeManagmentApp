@@ -613,7 +613,7 @@
   /* ===== Form rows ===== */
   .form-row {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr));
     gap: 12px;
     margin-bottom: 16px;
   }
@@ -957,6 +957,63 @@
   .privacy-eye.active { color: var(--primary); }
   .blurred { filter: blur(6px); user-select: none; transition: filter 0.2s; }
   .blurred:hover { filter: blur(0); }
+
+  /* ===== Mobile: form & modal responsive fixes ===== */
+  @media (max-width: 600px) {
+    /* Modal container — full width, minimal padding */
+    .modal-backdrop { padding: 10px; align-items: flex-end; }
+    .modal {
+      padding: 18px 16px;
+      max-width: 100%;
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+      max-height: 92vh;
+    }
+    .modal-title { font-size: 16px; margin-bottom: 14px; }
+
+    /* Form rows: always single column on mobile */
+    .form-row {
+      grid-template-columns: 1fr !important;
+      gap: 10px;
+    }
+
+    /* Every direct child of form-row gets full width */
+    .form-row > * { width: 100%; }
+
+    /* All inputs/selects fill the container */
+    .form-row input,
+    .form-row select,
+    .form-row .time24-input { width: 100%; box-sizing: border-box; }
+
+    /* Expense rows: wrap into 2-line layout on mobile */
+    .expense-row {
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .expense-row select      { flex: 1 1 100%; width: 100%; }
+    .expense-row input[type="number"] { flex: 1 1 calc(40% - 6px); width: auto; }
+    .expense-row input[type="text"]   { flex: 1 1 calc(60% - 6px); width: auto; }
+    .expense-row .icon-btn   { flex-shrink: 0; align-self: flex-start; margin-top: 2px; }
+
+    /* Salary net row: stack vertically */
+    .salary-net-row { flex-direction: column; align-items: flex-start; gap: 6px; }
+
+    /* Form actions: full-width buttons */
+    .form-actions { flex-direction: column; gap: 8px; }
+    .form-actions .btn { width: 100%; justify-content: center; }
+
+    /* SmartFill day row: wrap date+meta */
+    .smartfill-day { flex-wrap: wrap; }
+    .smartfill-date { min-width: unset; }
+
+    /* Punch panel inside modal */
+    .punch-panel { gap: 10px; }
+
+    /* Period nav: compact */
+    .period-nav { gap: 4px; }
+
+    /* DaysOff add form */
+    .card { padding: 14px 12px; }
+  }
 </style>
 </head>
 <body>
