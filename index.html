@@ -509,7 +509,8 @@
   /* Location segmented control */
   .loc-segment {
     display: flex;
-    gap: 0;
+    flex-wrap: wrap;
+    gap: 4px;
     background: var(--surface);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);
@@ -551,8 +552,12 @@
     font-size: 12px;
     font-weight: 500;
   }
-  .loc-pill.office { background: var(--info-soft); color: var(--info); }
-  .loc-pill.home { background: var(--primary-soft); color: #93c5fd; }
+  .loc-pill.office   { background: var(--info-soft);    color: var(--info);    }
+  .loc-pill.home     { background: var(--primary-soft); color: #93c5fd;        }
+  .loc-pill.field    { background: #1a2e1a;             color: #6ee7b7;        }
+  .loc-pill.client   { background: #1e1a2e;             color: #c4b5fd;        }
+  .loc-pill.vacation { background: #0d2535;             color: #38bdf8;        }
+  .loc-pill.sick     { background: var(--danger-soft);  color: var(--danger);  }
   .loc-pill svg { width: 12px; height: 12px; }
 
   /* Small "edit time" link inside punch status */
@@ -1152,10 +1157,12 @@ const HEB_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','
 
 // Work location options
 const LOCATIONS = {
-  office: { label: 'מהמשרד', icon: 'office' },
-  home:   { label: 'מהבית',  icon: 'home' },
-  field:  { label: 'שטח',    icon: 'field' },
-  client: { label: 'לקוח',   icon: 'client' },
+  office:   { label: 'מהמשרד', icon: 'office'   },
+  home:     { label: 'מהבית',  icon: 'home'     },
+  field:    { label: 'שטח',    icon: 'field'    },
+  client:   { label: 'לקוח',   icon: 'client'   },
+  vacation: { label: 'חופשה',  icon: 'vacation' },
+  sick:     { label: 'מחלה',   icon: 'sick'     },
 };
 const DEFAULT_LOCATION = 'office';
 
@@ -1455,13 +1462,39 @@ function calcMonthlySalary(entries, settings, user, monthFrom, monthTo, daysOff,
   const tips      = mEntries.reduce((s,e)=>s+(parseFloat(e.tips)||0),0);
   const shiftBonus= mEntries.reduce((s,e)=>s+(parseFloat(e.shift_bonus)||0),0);
 
+  // ---- Israeli sick pay law: Day1=0%, Days2-3=50%, Day4+=100% ----
+  let sickPay = 0;
+  const sickEntries = mEntries.filter(e => e.location === 'sick')
+    .sort((a,b) => a.date.localeCompare(b.date));
+  if (sickEntries.length > 0 && type !== 'global' && rate > 0) {
+    const groups = [];
+    let cur = [sickEntries[0]];
+    for (let i = 1; i < sickEntries.length; i++) {
+      const prev = parseYmd(sickEntries[i-1].date);
+      const curr = parseYmd(sickEntries[i].date);
+      const gap = (curr - prev) / 86400000;
+      if (gap <= 3) { cur.push(sickEntries[i]); } // ≤3 day gap = same illness (covers Fri–Sun)
+      else { groups.push(cur); cur = [sickEntries[i]]; }
+    }
+    groups.push(cur);
+    for (const grp of groups) {
+      grp.forEach((entry, idx) => {
+        const mult = idx === 0 ? 0 : idx < 3 ? 0.5 : 1.0;
+        sickPay += entry.hours * rate * mult;
+      });
+    }
+  }
+
   if (type === 'global') {
     const stats = getPersonalRangeStats(mEntries, settings, monthFrom, monthTo, jobPct, daysOff, customDailyHours);
-    return { base, ot:0, total:base+tips+shiftBonus, worked:stats.worked, target:stats.target, expenses, tips, shiftBonus };
+    return { base, ot:0, total:base+tips+shiftBonus, worked:stats.worked, target:stats.target, expenses, tips, shiftBonus, sickPay:0 };
   }
   let baseTotal=0, otTotal=0;
   for (const d of daysInRange(monthFrom, monthTo)) {
     const dayEntries = mEntries.filter(e => e.date === ymd(d));
+    if (!dayEntries.length) continue;
+    const isSickDay = dayEntries.every(e => e.location === 'sick');
+    if (isSickDay) continue; // sick pay is calculated separately above
     const worked = dayEntries.reduce((s,e)=>s+e.hours,0);
     if (!worked) continue;
     const target = getPersonalDailyTarget(d, settings, jobPct, daysOff, customDailyHours);
@@ -1470,8 +1503,8 @@ function calcMonthlySalary(entries, settings, user, monthFrom, monthTo, daysOff,
     if (type === 'base_ot'){ otTotal  += ot1*rate*1.25 + ot2*rate*1.5; }
   }
   if (type === 'base_ot') baseTotal = base;
-  const grossTotal = baseTotal + otTotal + tips + shiftBonus;
-  return { base:baseTotal, ot:otTotal, total:grossTotal, expenses, tips, shiftBonus };
+  const grossTotal = baseTotal + otTotal + tips + shiftBonus + sickPay;
+  return { base:baseTotal, ot:otTotal, total:grossTotal, expenses, tips, shiftBonus, sickPay };
 }
 
 // ===== 2026 Israeli Net Salary Calculator =====
@@ -1489,8 +1522,12 @@ const IL_CREDIT_POINT_2026 = 242;   // ₪ per month
 const IL_MIN_WAGE_2026     = 7522;  // ₪/month
 const IL_NI_CEILING_2026   = 49030; // ₪/month max for NI
 
-function calcNetSalary2026(grossMonthly, creditPoints) {
-  const cp = parseFloat(creditPoints) || 2.25;
+function calcNetSalary2026(grossMonthly, creditPoints, pensionRate, studyFundRate, pensionablePct) {
+  const cp       = parseFloat(creditPoints)   || 2.25;
+  const penRate  = parseFloat(pensionRate)    || 6;
+  const sfRate   = parseFloat(studyFundRate)  || 2.5;
+  const penPct   = parseFloat(pensionablePct) || 100;
+
   // Income tax (מס הכנסה)
   let tax = 0, prev = 0;
   for (const b of IL_TAX_BRACKETS_2026) {
@@ -1517,14 +1554,23 @@ function calcNetSalary2026(grossMonthly, creditPoints) {
     health = IL_MIN_WAGE_2026 * 0.031 + (grossMonthly - IL_MIN_WAGE_2026) * 0.05;
   }
 
-  const totalDeductions = tax + ni + health;
+  // Pension — פנסיה (employee contribution)
+  const pensionableSalary = grossMonthly * (penPct / 100);
+  const pension = pensionableSalary * (penRate / 100);
+
+  // Study fund — קרן השתלמות (employee contribution)
+  const studyFund = grossMonthly * (sfRate / 100);
+
+  const totalDeductions = tax + ni + health + pension + studyFund;
   return {
-    gross: Math.round(grossMonthly),
-    tax:   Math.round(tax),
-    ni:    Math.round(ni),
-    health:Math.round(health),
+    gross:      Math.round(grossMonthly),
+    tax:        Math.round(tax),
+    ni:         Math.round(ni),
+    health:     Math.round(health),
+    pension:    Math.round(pension),
+    studyFund:  Math.round(studyFund),
     deductions: Math.round(totalDeductions),
-    net:   Math.round(grossMonthly - totalDeductions),
+    net:        Math.round(grossMonthly - totalDeductions),
   };
 }
 
@@ -1668,13 +1714,13 @@ function useAuth() {
       await sb.updateProfile(userId, config);
       setCurrentUser(u => ({ ...u, ...config }));
     } catch(e) {
-      // credit_points column may not exist yet — retry without it
-      if (config.credit_points !== undefined) {
+      // New columns may not exist yet — strip them and retry with base fields only
+      const { credit_points, pension_rate, study_fund_rate, pensionable_pct, ...rest } = config;
+      if (Object.keys(rest).length < Object.keys(config).length) {
         try {
-          const { credit_points, ...rest } = config;
           await sb.updateProfile(userId, rest);
           setCurrentUser(u => ({ ...u, ...rest }));
-          console.warn('updateSalaryConfig: credit_points column missing, saved without it');
+          console.warn('updateSalaryConfig: new columns missing, saved base config only');
         } catch(e2) { console.error('updateSalaryConfig:', e2); }
       } else {
         console.error('updateSalaryConfig:', e);
@@ -1688,26 +1734,30 @@ function useAuth() {
 // ===================== Login screen =====================
 // Location icon (office building or house)
 function LocationIcon({ loc }) {
-  if (loc === 'home') {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-        <polyline points="9 22 9 12 15 12 15 22"/>
-      </svg>
-    );
-  }
+  if (loc === 'home') return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+      <polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+  );
+  if (loc === 'vacation') return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 18a5 5 0 0 0-10 0"/><line x1="12" y1="9" x2="12" y2="2"/>
+      <line x1="4.22" y1="10.22" x2="5.64" y2="11.64"/><line x1="1" y1="18" x2="3" y2="18"/>
+      <line x1="21" y1="18" x2="23" y2="18"/><line x1="18.36" y1="11.64" x2="19.78" y2="10.22"/>
+    </svg>
+  );
+  if (loc === 'sick') return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+    </svg>
+  );
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="4" y="2" width="16" height="20" rx="1"/>
-      <line x1="8" y1="6" x2="8" y2="6"/>
-      <line x1="12" y1="6" x2="12" y2="6"/>
-      <line x1="16" y1="6" x2="16" y2="6"/>
-      <line x1="8" y1="10" x2="8" y2="10"/>
-      <line x1="12" y1="10" x2="12" y2="10"/>
-      <line x1="16" y1="10" x2="16" y2="10"/>
-      <line x1="8" y1="14" x2="8" y2="14"/>
-      <line x1="12" y1="14" x2="12" y2="14"/>
-      <line x1="16" y1="14" x2="16" y2="14"/>
+      <line x1="8" y1="6" x2="8" y2="6"/><line x1="12" y1="6" x2="12" y2="6"/><line x1="16" y1="6" x2="16" y2="6"/>
+      <line x1="8" y1="10" x2="8" y2="10"/><line x1="12" y1="10" x2="12" y2="10"/><line x1="16" y1="10" x2="16" y2="10"/>
+      <line x1="8" y1="14" x2="8" y2="14"/><line x1="12" y1="14" x2="12" y2="14"/><line x1="16" y1="14" x2="16" y2="14"/>
       <path d="M10 22v-4h4v4"/>
     </svg>
   );
@@ -2261,7 +2311,7 @@ function SalaryWidget({ user, entries, settings, daysOff, onConfigure }) {
   const mFrom = new Date(today.getFullYear(), today.getMonth(), 1);
   const mTo   = new Date(today.getFullYear(), today.getMonth()+1, 0);
   const res = calcMonthlySalary(entries, settings, user, mFrom, mTo, (daysOff||[]).map(d=>d.date), user.custom_daily_hours||null);
-  const net = calcNetSalary2026(res.total, user.credit_points ?? 2.25);
+  const net = calcNetSalary2026(res.total, user.credit_points ?? 2.25, user.pension_rate ?? 6, user.study_fund_rate ?? 2.5, user.pensionable_pct ?? 100);
   const fmt = n => n.toLocaleString('he-IL',{maximumFractionDigits:0});
   const M = ({children}) => masked ? <span className="blurred">{children}</span> : <>{children}</>;
   return (
@@ -2279,6 +2329,7 @@ function SalaryWidget({ user, entries, settings, daysOff, onConfigure }) {
       <div className="salary-breakdown">
         <span className="salary-chip">בסיס <M>₪{fmt(res.base)}</M></span>
         {res.ot>0 && <span className="salary-chip ot">שעות נוספות <M>₪{fmt(res.ot)}</M></span>}
+        {(res.sickPay||0)>0 && <span className="salary-chip" style={{background:'var(--danger-soft)',color:'var(--danger)'}}>מחלה <M>₪{fmt(res.sickPay)}</M></span>}
         {(res.tips||0)>0 && <span className="salary-chip ot">טיפים <M>₪{fmt(res.tips)}</M></span>}
         {(res.shiftBonus||0)>0 && <span className="salary-chip ot">תגמול משמרת <M>₪{fmt(res.shiftBonus)}</M></span>}
         {res.expenses>0 && <span className="salary-chip exp">הוצאות <M>₪{fmt(res.expenses)}</M></span>}
@@ -2286,12 +2337,14 @@ function SalaryWidget({ user, entries, settings, daysOff, onConfigure }) {
         <span className="salary-chip cfg" onClick={onConfigure}>✏️ עריכה</span>
       </div>
       <div className="salary-net-row">
-        <span className="salary-net-label">נטו משוער (2026)</span>
+        <span className="salary-net-label">נטו-נטו משוער (2026)</span>
         <span className="salary-net-amount">₪<M>{fmt(net.net)}</M></span>
         <div className="salary-net-breakdown">
           <span className="salary-net-chip">מס הכנסה <M>₪{fmt(net.tax)}</M></span>
           <span className="salary-net-chip">ביטוח לאומי <M>₪{fmt(net.ni)}</M></span>
-          <span className="salary-net-chip">ביטוח בריאות <M>₪{fmt(net.health)}</M></span>
+          <span className="salary-net-chip">בריאות <M>₪{fmt(net.health)}</M></span>
+          {net.pension>0 && <span className="salary-net-chip">פנסיה <M>₪{fmt(net.pension)}</M></span>}
+          {net.studyFund>0 && <span className="salary-net-chip">קה"ש <M>₪{fmt(net.studyFund)}</M></span>}
         </div>
       </div>
     </div>
@@ -2353,18 +2406,24 @@ function SmartFillModal({ entries, settings, user, daysOff, onFill, onClose }) {
 
 // ===== SalaryConfigModal =====
 function SalaryConfigModal({ user, auth, onClose }) {
-  const [type,    setType]    = useState(user.salary_type||'hourly');
-  const [rate,    setRate]    = useState(String(user.hourly_rate||''));
-  const [base,    setBase]    = useState(String(user.base_salary||''));
-  const [credits, setCredits] = useState(String(user.credit_points ?? 2.25));
-  const [busy,    setBusy]    = useState(false);
+  const [type,       setType]       = useState(user.salary_type||'hourly');
+  const [rate,       setRate]       = useState(String(user.hourly_rate||''));
+  const [base,       setBase]       = useState(String(user.base_salary||''));
+  const [credits,    setCredits]    = useState(String(user.credit_points ?? 2.25));
+  const [pension,    setPension]    = useState(String(user.pension_rate ?? 6));
+  const [studyFund,  setStudyFund]  = useState(String(user.study_fund_rate ?? 2.5));
+  const [penPct,     setPenPct]     = useState(String(user.pensionable_pct ?? 100));
+  const [busy,       setBusy]       = useState(false);
   const save = async () => {
     setBusy(true);
     await auth.updateSalaryConfig(user.id, {
-      salary_type:   type,
-      hourly_rate:   parseFloat(rate)    || 0,
-      base_salary:   parseFloat(base)    || 0,
-      credit_points: parseFloat(credits) || 2.25,
+      salary_type:      type,
+      hourly_rate:      parseFloat(rate)      || 0,
+      base_salary:      parseFloat(base)      || 0,
+      credit_points:    parseFloat(credits)   || 2.25,
+      pension_rate:     parseFloat(pension)   || 6,
+      study_fund_rate:  parseFloat(studyFund) || 2.5,
+      pensionable_pct:  parseFloat(penPct)    || 100,
     });
     onClose();
   };
@@ -2398,6 +2457,25 @@ function SalaryConfigModal({ user, auth, onClose }) {
           <label className="form-label">נקודות זיכוי (לחישוב נטו)</label>
           <input type="number" min="0" step="0.25" max="10" value={credits} onChange={e=>setCredits(e.target.value)} placeholder="2.25"/>
           <div className="hint">ברירת מחדל: 2.25. רווק/רווקה = 2.25, נשוי/נשואה = 2.75. כל נקודה = ₪{IL_CREDIT_POINT_2026}/חודש.</div>
+        </div>
+        <div className="divider" style={{margin:'12px 0'}}/>
+        <div style={{fontWeight:600,fontSize:13,marginBottom:10,color:'var(--text-muted)'}}>ניכויים סוציאליים (עובד)</div>
+        <div className="form-row">
+          <div>
+            <label className="form-label">פנסיה %</label>
+            <input type="number" min="0" max="20" step="0.5" value={pension} onChange={e=>setPension(e.target.value)} placeholder="6"/>
+            <div className="hint">ברירת מחדל: 6%</div>
+          </div>
+          <div>
+            <label className="form-label">קרן השתלמות %</label>
+            <input type="number" min="0" max="10" step="0.5" value={studyFund} onChange={e=>setStudyFund(e.target.value)} placeholder="2.5"/>
+            <div className="hint">ברירת מחדל: 2.5%</div>
+          </div>
+        </div>
+        <div style={{marginBottom:14}}>
+          <label className="form-label">% שכר פנסיוני (אחוז המשכורת שעליו מחשבים פנסיה)</label>
+          <input type="number" min="0" max="100" step="5" value={penPct} onChange={e=>setPenPct(e.target.value)} placeholder="100"/>
+          <div className="hint">בד"כ 100%. אם יש שכר לא-פנסיוני (תוספות) — הזן את האחוז הרלוונטי.</div>
         </div>
         <div className="hint" style={{marginBottom:12}}>שעות נוספות: 125% לשעתיים הראשונות, 150% לאחר מכן. מס הכנסה לפי מדרגות 2026.</div>
         <div className="form-actions">
@@ -3008,6 +3086,7 @@ function EntriesTab({ user, entries, setEntries, settings, daysOff = [] }) {
                   <th>תאריך</th>
                   <th>יום</th>
                   <th>שעות</th>
+                  <th>לעומת תקן</th>
                   <th>פירוט</th>
                   <th>מיקום</th>
                   <th>הערה</th>
@@ -3017,11 +3096,20 @@ function EntriesTab({ user, entries, setEntries, settings, daysOff = [] }) {
               <tbody>
                 {monthEntries.map(e => {
                   const d = parseYmd(e.date);
+                  const dailyTarget = getPersonalDailyTarget(d, settings, user.job_percent ?? 100, daysOff.map(x=>x.date), user.custom_daily_hours||null);
+                  const diff = e.hours - dailyTarget;
                   return (
                     <tr key={e.id}>
                       <td>{fmtDateIL(d)}</td>
                       <td>{HEB_DAYS[d.getDay()]}</td>
                       <td style={{fontWeight:600}}>{fmtHours(e.hours)}</td>
+                      <td>
+                        {(dailyTarget > 0 || e.hours > 0) ? (
+                          <span style={{color: diff >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight:500, fontSize:13}}>
+                            {diff >= 0 ? '+' : ''}{fmtHours(diff)}
+                          </span>
+                        ) : <span style={{color:'var(--text-soft)'}}>—</span>}
+                      </td>
                       <td style={{color:'var(--text-muted)', fontSize:13}}>
                         {e.mode === 'range' && e.start && e.end
                           ? `${e.start} – ${e.end}`
@@ -4044,7 +4132,12 @@ ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS expenses JSONB DEFAULT '[]'::j
 ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS tips NUMERIC(10,2) DEFAULT 0;
 ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS shift_bonus NUMERIC(10,2) DEFAULT 0;
 
--- 6. טבלת ימי חופש
+-- 6. פנסיה + קרן השתלמות
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS pension_rate NUMERIC(5,2) DEFAULT 6.0;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS study_fund_rate NUMERIC(5,2) DEFAULT 2.5;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS pensionable_pct NUMERIC(5,2) DEFAULT 100.0;
+
+-- 7. טבלת ימי חופש
 CREATE TABLE IF NOT EXISTS days_off (
   id TEXT PRIMARY KEY,
   user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
@@ -4129,6 +4222,11 @@ END $$;`;
       await sb.select('profiles', 'select=credit_points&limit=1');
       setDbSetup(s => ({ ...s, creditPoints: true }));
     } catch(e) { setDbSetup(s => ({ ...s, creditPoints: false })); }
+    // Check pension columns
+    try {
+      await sb.select('profiles', 'select=pension_rate,study_fund_rate,pensionable_pct&limit=1');
+      setDbSetup(s => ({ ...s, pension: true }));
+    } catch(e) { setDbSetup(s => ({ ...s, pension: false })); }
   };
 
   const loadDaysOff = async () => {
@@ -4155,7 +4253,7 @@ END $$;`;
     } catch(e) { console.error('delete day off:', e); }
   };
 
-  const dbNeedsSetup = dbSetup.daysOff === false || dbSetup.jobPercent === false || dbSetup.salary === false || dbSetup.expenses === false || dbSetup.tips === false || dbSetup.creditPoints === false;
+  const dbNeedsSetup = dbSetup.daysOff === false || dbSetup.jobPercent === false || dbSetup.salary === false || dbSetup.expenses === false || dbSetup.tips === false || dbSetup.creditPoints === false || dbSetup.pension === false;
   const [sqlCopied, setSqlCopied] = useState(false);
   const copySql = () => {
     navigator.clipboard.writeText(DB_SETUP_SQL).then(() => {
@@ -4378,7 +4476,6 @@ END $$;`;
   const tabs = [
     { id: 'dashboard', label: 'מסך ראשי' },
     { id: 'entries',   label: 'השעות שלי' },
-    { id: 'daysoff',   label: 'ימי חופש' },
     { id: 'quarterly', label: 'סיכום רבעוני' },
     { id: 'account',   label: 'החשבון שלי' },
   ];
@@ -4390,9 +4487,6 @@ END $$;`;
     )},
     { id:'entries', label:'שעות', icon:(
       <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-    )},
-    { id:'daysoff', label:'חופש', icon:(
-      <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
     )},
     { id:'quarterly', label:'רבעוני', icon:(
       <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -4494,13 +4588,7 @@ END $$;`;
           daysOff={daysOff}
         />
       )}
-      {tab === 'daysoff' && (
-        <DaysOff
-          daysOff={daysOff}
-          onAdd={handleAddDayOff}
-          onDelete={handleDeleteDayOff}
-        />
-      )}
+      {/* DaysOff tab removed — vacation/sick logged as location entries */}
       {tab === 'quarterly' && (
         <QuarterlyView
           entries={entries}
