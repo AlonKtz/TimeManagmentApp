@@ -1412,12 +1412,15 @@ function getPersonalRangeStats(entries, settings, from, to, jobPercent = 100, da
 
 // ===== Smart Fill helpers =====
 function detectMissingDays(entries, settings, from, to, jobPercent, daysOff, customDailyHours) {
+  // Dates with vacation/sick entries are NOT considered missing
+  const leaveDates = new Set(entries.filter(e => e.location === 'vacation' || e.location === 'sick').map(e => e.date));
   const workedDates = new Set(entries.map(e => e.date));
   const today = ymd(new Date());
   return daysInRange(from, to)
     .filter(d => {
       const key = ymd(d);
       if (key >= today) return false;
+      if (leaveDates.has(key)) return false; // vacation/sick = not missing
       const target = getPersonalDailyTarget(d, settings, jobPercent, daysOff, customDailyHours);
       return target > 0 && !workedDates.has(key);
     })
@@ -2754,14 +2757,17 @@ function Dashboard({ user, auth, entries, settings, setSettings, activePunch, on
             </thead>
             <tbody>
               {daysInRange(weekStart, weekEnd).map(d => {
+                const key = ymd(d);
                 const target = getPersonalDailyTarget(d, settings, jobPercent, daysOffDates, customDailyHours);
-                const isToday = ymd(d) === ymd(today);
-                const worked = getWorkedOnDate(entries, d) + (isToday ? liveAdd : 0);
+                const isToday = key === ymd(today);
+                const dayEntries = entries.filter(e => e.date === key);
+                const worked = dayEntries.reduce((s,e) => s + (e.hours||0), 0) + (isToday ? liveAdd : 0);
                 const diff = worked - target;
                 const holidayInfo = getHolidayInfo(d, settings);
-                const key = ymd(d);
+                const vacationEntry = dayEntries.find(e => e.location === 'vacation');
+                const sickEntry    = dayEntries.find(e => e.location === 'sick');
                 return (
-                  <tr key={key}>
+                  <tr key={key} style={vacationEntry||sickEntry ? {background:'rgba(255,255,255,0.02)'} : {}}>
                     <td>
                       {HEB_DAYS[d.getDay()]}
                       {isToday && <span className="pill pill-info" style={{marginRight:6}}>היום</span>}
@@ -2770,16 +2776,19 @@ function Dashboard({ user, auth, entries, settings, setSettings, activePunch, on
                           {holidayInfo.note}
                         </span>
                       )}
+                      {vacationEntry && <span className="pill" style={{marginRight:6,background:'#0d2535',color:'#38bdf8'}}>🏖️ חופשה</span>}
+                      {sickEntry    && <span className="pill" style={{marginRight:6,background:'var(--danger-soft)',color:'var(--danger)'}}>🤒 מחלה</span>}
                     </td>
                     <td>{fmtDateILShort(d)}</td>
                     <td>{fmtHours(target)}</td>
                     <td style={{fontWeight:500}}>{fmtHours(worked)}</td>
                     <td>
-                      {target > 0 || worked > 0 ? (
-                        <span className={diff >= 0 ? 'pill pill-success' : 'pill pill-danger'}>
-                          {diff >= 0 ? '+' : ''}{fmtHours(diff)}
-                        </span>
-                      ) : <span style={{color:'var(--text-soft)'}}>—</span>}
+                      {vacationEntry || sickEntry
+                        ? <span className="pill" style={{background:'var(--surface-2)',color:'var(--text-muted)'}}>חופשה/מחלה</span>
+                        : target > 0 || worked > 0
+                          ? <span className={diff >= 0 ? 'pill pill-success' : 'pill pill-danger'}>{diff >= 0 ? '+' : ''}{fmtHours(diff)}</span>
+                          : <span style={{color:'var(--text-soft)'}}>—</span>
+                      }
                     </td>
                     {isAdmin && (
                       <td>
