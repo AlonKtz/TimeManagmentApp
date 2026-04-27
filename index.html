@@ -427,6 +427,24 @@
     font-size: 13px;
     margin-bottom: 16px;
   }
+  .login-not-found {
+    background: var(--primary-soft);
+    border: 1px solid rgba(245,136,0,0.35);
+    border-radius: var(--radius-sm);
+    padding: 11px 14px;
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.7;
+    margin-bottom: 16px;
+  }
+  .login-not-found strong { color: var(--primary); }
+  .login-not-found-btn {
+    color: var(--primary);
+    font-weight: 700;
+    font-size: 13px;
+    text-decoration: underline;
+    padding: 0 2px;
+  }
   .toggle-auth {
     text-align: center;
     margin-top: 16px;
@@ -1740,8 +1758,9 @@ function useAuth() {
             headers: { 'apikey': sb._key }
           }).then(r => r.json());
           if (Array.isArray(rows) && rows.length === 0) {
-            return { error: 'כתובת האימייל הזו אינה רשומה', notRegistered: true };
+            return { notRegistered: true }; // email unknown → show register CTA
           }
+          return { error: 'הסיסמה שגויה — נסה שוב' }; // email exists → wrong password
         } catch {}
       }
       return { error: 'אימייל או סיסמה שגויים' };
@@ -2032,24 +2051,24 @@ function LoginScreen({ auth }) {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
+  const [notFound, setNotFound] = useState(false); // triggers register CTA
   const [busy, setBusy] = useState(false);
+
+  const clearMessages = () => { setError(''); setInfo(''); setNotFound(false); };
+
+  const goRegister = () => { clearMessages(); setMode('register'); }; // email already in state
 
   const submit = async (e) => {
     e.preventDefault();
-    setError(''); setInfo(''); setBusy(true);
+    clearMessages(); setBusy(true);
     if (mode === 'login') {
       const res = await auth.login({ email, password });
-      if (res.error) {
-        if (res.notRegistered) {
-          setError('');
-          setInfo('כתובת האימייל הזו אינה רשומה במערכת.');
-          setMode('register');
-        } else if (res.pendingVerification) {
-          setError('');
-          setInfo('📧 ' + res.error);
-        } else {
-          setError(res.error);
-        }
+      if (res.notRegistered) {
+        setNotFound(true); // show CTA — email carried over automatically
+      } else if (res.pendingVerification) {
+        setInfo('📧 ' + res.error);
+      } else if (res.error) {
+        setError(res.error);
       }
     } else {
       const res = await auth.register({ email, password, name });
@@ -2068,11 +2087,19 @@ function LoginScreen({ auth }) {
             <polyline points="12 6 12 12 16 14"/>
           </svg>
         </div>
-        <h1 className="login-title">מעקב שעות צוות</h1>
+        <h1 className="login-title">TimeKeeper</h1>
         <p className="login-subtitle">{mode === 'login' ? 'התחברות למערכת' : 'יצירת חשבון חדש'}</p>
 
-        {error && <div className="form-error">{error}</div>}
-        {info  && <div className="form-success">{info}</div>}
+        {notFound && (
+          <div className="login-not-found">
+            <span>האימייל </span><strong dir="ltr">{email}</strong><span> אינו רשום במערכת.</span>
+            <br/>
+            <span>אולי כדאי </span>
+            <button type="button" className="login-not-found-btn" onClick={goRegister}>להירשם עכשיו?</button>
+          </div>
+        )}
+        {!notFound && error && <div className="form-error">{error}</div>}
+        {info && <div className="form-success">{info}</div>}
 
         <form onSubmit={submit}>
           {mode === 'register' && (
@@ -2083,7 +2110,7 @@ function LoginScreen({ auth }) {
           )}
           <div className="form-group">
             <label className="form-label">אימייל</label>
-            <input type="text" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" dir="ltr" style={{textAlign:'right'}} />
+            <input type="text" value={email} onChange={e => { setEmail(e.target.value); setNotFound(false); }} placeholder="you@example.com" autoComplete="email" dir="ltr" style={{textAlign:'right'}} />
           </div>
           <div className="form-group">
             <label className="form-label">סיסמה</label>
@@ -2101,11 +2128,11 @@ function LoginScreen({ auth }) {
         <div className="toggle-auth">
           {mode === 'login' ? (
             <>אין לך חשבון?
-              <button type="button" onClick={() => { setMode('register'); setError(''); }}>הרשמה</button>
+              <button type="button" onClick={goRegister}>הרשמה</button>
             </>
           ) : (
             <>יש לך חשבון?
-              <button type="button" onClick={() => { setMode('login'); setError(''); }}>כניסה</button>
+              <button type="button" onClick={() => { clearMessages(); setMode('login'); }}>כניסה</button>
             </>
           )}
         </div>
