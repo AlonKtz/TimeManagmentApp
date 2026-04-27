@@ -1137,9 +1137,60 @@ const sb = {
   async updateProfile(userId, data) {
     return this.update('profiles', data, 'id', userId);
   },
+
+  // Returns server UTC time via response Date header (avoids client clock drift)
+  async serverTime() {
+    try {
+      const r = await fetch(`${this._url}/rest/v1/`, { method: 'HEAD', headers: { 'apikey': this._key } });
+      const d = r.headers.get('Date');
+      return d ? new Date(d) : new Date();
+    } catch { return new Date(); }
+  },
+
+  // Lightweight Supabase Realtime v2 subscription (Phoenix channels over WebSocket).
+  // Returns an unsubscribe function. Automatically reconnects on drop.
+  subscribe(userId, onEvent) {
+    const host = new URL(this._url).hostname;
+    const wsUrl = `wss://${host}/realtime/v1/websocket?apikey=${this._key}&vsn=1.0.0`;
+    const topic  = `realtime:sync-${userId.slice(0, 8)}`;
+    let ws, hbId, ref = 0, dead = false;
+    const connect = () => {
+      try { ws = new WebSocket(wsUrl); } catch { return; }
+      ws.onopen = () => {
+        ws.send(JSON.stringify({
+          topic, event: 'phx_join', ref: String(++ref),
+          payload: {
+            access_token: this._token,
+            config: {
+              broadcast: { ack: false, self: false },
+              presence: { key: '' },
+              postgres_changes: [
+                { event: '*', schema: 'public', table: 'time_entries', filter: `user_id=eq.${userId}` },
+              ],
+            },
+          },
+        }));
+        hbId = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ topic: 'phoenix', event: 'heartbeat', payload: {}, ref: String(++ref) }));
+          }
+        }, 25000);
+      };
+      ws.onmessage = e => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.event === 'postgres_changes' && msg.payload?.data) onEvent(msg.payload.data);
+        } catch {}
+      };
+      ws.onclose = () => { clearInterval(hbId); if (!dead) setTimeout(connect, 5000); };
+      ws.onerror  = () => ws.close();
+    };
+    connect();
+    return () => { dead = true; clearInterval(hbId); try { ws?.close(); } catch {} };
+  },
 };
 
-// Active punch lives in localStorage per-device (it's ephemeral, not shared)
+// Active punch: localStorage for instant offline access; profiles.punch_state for cross-device sync.
 const loadPunch = () => { try { return JSON.parse(localStorage.getItem('tt_punch') || 'null'); } catch { return null; } };
 const savePunch = v => v ? localStorage.setItem('tt_punch', JSON.stringify(v)) : localStorage.removeItem('tt_punch');
 // Session token persisted locally
@@ -4077,7 +4128,14 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='days_off' AND policyname='users_days_off') THEN
     CREATE POLICY "users_days_off" ON days_off FOR ALL USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
   END IF;
-END $$;`;
+END $$;
+
+-- 8. סנכרון שעון נוכחות בין מכשירים (punch_state)
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS punch_state JSONB DEFAULT NULL;
+
+-- 9. Real-time — הפעל שידור שינויים בטבלת הזנות זמן
+ALTER TABLE time_entries REPLICA IDENTITY FULL;
+ALTER PUBLICATION supabase_realtime ADD TABLE time_entries;`;
 
   // Load entries + settings when user logs in
   useEffect(() => {
@@ -4085,6 +4143,7 @@ END $$;`;
     loadEntries();
     loadSettings();
     loadDaysOff();
+    loadPunchState();
     checkDbSetup();
     if (user.role === 'admin') auth.loadUsers();
   }, [user?.id]);
@@ -4112,6 +4171,62 @@ END $$;`;
     check();
     return () => clearInterval(id);
   }, [user?.id, activePunch]);
+
+  // ===== Real-time subscription (Supabase WebSocket) =====
+  useEffect(() => {
+    if (!user) return;
+    const unsub = sb.subscribe(user.id, () => {
+      loadEntries(); // re-fetch on any remote INSERT/UPDATE/DELETE
+    });
+    return unsub;
+  }, [user?.id]);
+
+  // ===== Visibility change: re-fetch data + refresh session if stale =====
+  useEffect(() => {
+    if (!user) return;
+    let hiddenAt = null;
+    let lastFetch = 0;
+    const onVisibility = async () => {
+      if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+      // Tab became visible
+      const hiddenMs = hiddenAt ? Date.now() - hiddenAt : 0;
+      hiddenAt = null;
+      if (Date.now() - lastFetch < 8000) return; // debounce rapid tab-switches
+      lastFetch = Date.now();
+      // Refresh session token if hidden > 5 min (prevents stale auth on long backgrounds)
+      if (hiddenMs > 5 * 60 * 1000) {
+        const session = loadToken();
+        if (session?.refresh_token) {
+          try {
+            const res = await sb.refreshSession(session.refresh_token);
+            if (res.access_token) {
+              sb._token = res.access_token;
+              saveToken({ access_token: res.access_token, refresh_token: res.refresh_token });
+            }
+          } catch {}
+        }
+      }
+      loadEntries();
+      loadSettings();
+      loadPunchState();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [user?.id]);
+
+  // ===== Window focus: re-fetch (covers switching from another OS window) =====
+  useEffect(() => {
+    if (!user) return;
+    let lastFocus = 0;
+    const onFocus = () => {
+      if (Date.now() - lastFocus < 8000) return;
+      lastFocus = Date.now();
+      loadEntries();
+      loadPunchState();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [user?.id]);
 
   const checkDbSetup = async () => {
     // Check days_off table
@@ -4146,6 +4261,23 @@ END $$;`;
       const rows = await sb.select('days_off', `user_id=eq.${user.id}&order=date.desc`);
       setDaysOffState(rows);
     } catch(e) { setDaysOffState([]); }
+  };
+
+  // Sync activePunch from server (cross-device). punch_state column may not exist yet — handled defensively.
+  const loadPunchState = async () => {
+    try {
+      const rows = await sb.select('profiles', `id=eq.${user.id}&select=punch_state`);
+      const serverPunch = rows[0]?.punch_state;
+      if (serverPunch?.start) {
+        // Another device has an active punch — adopt it
+        setActivePunchState(serverPunch);
+        savePunch(serverPunch);
+      } else if (serverPunch === null) {
+        // Server explicitly cleared punch (stopped on another device)
+        const local = loadPunch();
+        if (local) { setActivePunchState(null); savePunch(null); }
+      }
+    } catch { /* column not yet added — fall back to localStorage */ }
   };
 
   // pension/creditPoints handled defensively in saveEntries/updateSalaryConfig — not required for banner
@@ -4313,12 +4445,15 @@ END $$;`;
   const handlePunch = async ({ action, location }) => {
     if (action === 'start') {
       if (activePunch) return;
-      setActivePunch({ start: new Date().toISOString(), location: location || DEFAULT_LOCATION });
+      const now = await sb.serverTime(); // server clock — immune to device drift
+      const punch = { start: now.toISOString(), location: location || DEFAULT_LOCATION };
+      setActivePunch(punch);
+      try { await sb.updateProfile(user.id, { punch_state: punch }); } catch {} // cross-device sync
     } else if (action === 'stop') {
       if (!activePunch) return;
+      const now = await sb.serverTime();
       const startDate = new Date(activePunch.start);
-      const endDate = new Date();
-      const hours = diffHours(activePunch.start, endDate.toISOString());
+      const hours = diffHours(activePunch.start, now.toISOString());
       if (hours < 0.01) {
         if (!confirm('פחות מדקה נרשמה. להפסיק בכל זאת?')) return;
       }
@@ -4327,22 +4462,25 @@ END $$;`;
         date: ymd(startDate),
         hours: Math.round(hours * 100) / 100,
         start: fmtTime24(startDate),
-        end:   fmtTime24(endDate),
+        end:   fmtTime24(now),
         note: '',
         mode: 'range',
         location: location || activePunch.location || DEFAULT_LOCATION,
         viaPunch: true,
         expenses: activePunch.expenses || [],
-        createdAt: new Date().toISOString(),
+        createdAt: now.toISOString(),
       };
       setActivePunch(null);
+      try { await sb.updateProfile(user.id, { punch_state: null }); } catch {} // clear cross-device
       await saveEntries([...entries, newEntry]);
     }
   };
 
   const handleEditPunch = (newStartIso, expenses) => {
     if (!activePunch) return;
-    setActivePunch({ ...activePunch, start: newStartIso, expenses: expenses || activePunch.expenses || [] });
+    const updated = { ...activePunch, start: newStartIso, expenses: expenses || activePunch.expenses || [] };
+    setActivePunch(updated);
+    try { sb.updateProfile(user.id, { punch_state: updated }); } catch {} // sync edit cross-device
   };
 
   // ---- Admin: manage users ----
