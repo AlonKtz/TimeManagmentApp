@@ -627,6 +627,20 @@
     font-weight: 500;
   }
   .edit-time-link:hover { text-decoration: underline; }
+  .punch-exit-hint {
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--success);
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+  .punch-exit-hint strong {
+    font-size: 16px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--success);
+  }
 
   /* ===== Tables ===== */
   .table-wrap {
@@ -1357,6 +1371,11 @@ function timeStrToHours(t) {
 }
 function diffHours(startIso, endIso) {
   return (new Date(endIso) - new Date(startIso)) / 3600000;
+}
+// Returns the recommended exit time (HH:MM) given a punch-in ISO string and a daily target in hours.
+function calcRecommendedExit(startIso, dailyTargetHours) {
+  if (!startIso || !(dailyTargetHours > 0)) return null;
+  return fmtTime24(new Date(new Date(startIso).getTime() + dailyTargetHours * 3600000));
 }
 
 // ===================== Defaults =====================
@@ -2770,6 +2789,11 @@ function Dashboard({ user, auth, entries, settings, setSettings, activePunch, on
                 </>
               ) : 'בחר מיקום ולחץ על "כניסה"'}
             </div>
+            {activePunch && calcRecommendedExit(activePunch.start, todayTarget) && (
+              <div className="punch-exit-hint">
+                יציאה מומלצת ב־<strong>{calcRecommendedExit(activePunch.start, todayTarget)}</strong>
+              </div>
+            )}
           </div>
           <LocationToggle value={location} onChange={setLocation} />
           {activePunch ? (
