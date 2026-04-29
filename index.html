@@ -4,9 +4,67 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>מעקב שעות צוות</title>
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+<link rel="preconnect" href="https://yxmbammlzweasjvpouqn.supabase.co" crossorigin />
+<link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
+<link rel="dns-prefetch" href="https://yxmbammlzweasjvpouqn.supabase.co" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script>
+// Bootstrap: serve compiled JSX from localStorage cache, load Babel only on cache miss.
+(function(){
+  var APP_VERSION = '1.04';
+  function getSource() {
+    var el = document.getElementById('tt-src');
+    return el ? el.textContent : null;
+  }
+  function computeKey(src) {
+    var h = 0;
+    for (var i = 0; i < src.length; i += 8) h = (Math.imul(31, h) + src.charCodeAt(i)) | 0;
+    return 'tt_jsc_' + APP_VERSION + '_' + src.length + '_' + (h >>> 0).toString(36);
+  }
+  function injectScript(code) {
+    var s = document.createElement('script');
+    s.textContent = code;
+    document.head.appendChild(s);
+  }
+  function onReady(fn) {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', fn, { once: true });
+    } else { fn(); }
+  }
+  function pruneCache(currentKey) {
+    try {
+      for (var i = localStorage.length - 1; i >= 0; i--) {
+        var k = localStorage.key(i);
+        if (k && k.startsWith('tt_jsc_') && k !== currentKey) localStorage.removeItem(k);
+      }
+    } catch(e) {}
+  }
+  onReady(function() {
+    var src = getSource();
+    if (!src) return;
+    var key = computeKey(src);
+    pruneCache(key);
+    try {
+      var cached = localStorage.getItem(key);
+      if (cached) { injectScript(cached); return; }
+    } catch(e) {}
+    // Cache miss — load Babel, compile, cache, execute
+    var babelScript = document.createElement('script');
+    babelScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js';
+    babelScript.onload = function() {
+      try {
+        var code = Babel.transform(src, { presets: ['react'] }).code;
+        try { localStorage.setItem(key, code); } catch(e) {}
+        injectScript(code);
+      } catch(err) { console.error('Babel compile error:', err); }
+    };
+    babelScript.onerror = function() { console.error('Failed to load Babel'); };
+    document.head.appendChild(babelScript);
+  });
+})();
+</script>
 <style>
   :root {
     --bg: #18181d;
@@ -217,6 +275,41 @@
     min-height: 34px !important;
     padding: 5px 12px !important;
   }
+  .topbar-report-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-height: 34px !important;
+    padding: 5px 11px !important;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    font-size: 13px;
+    cursor: pointer;
+    transition: color .15s, border-color .15s;
+  }
+  .topbar-report-btn:hover { color: var(--text); border-color: var(--border-strong); }
+  .report-textarea {
+    width: 100%;
+    min-height: 120px;
+    resize: vertical;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    padding: 10px 12px;
+    box-sizing: border-box;
+    direction: rtl;
+    line-height: 1.6;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .report-textarea:focus { border-color: var(--primary); }
   @media (max-width: 640px) {
     .topbar { padding: 10px 14px; gap: 8px; }
     .topbar-title .logo { width: 30px; height: 30px; font-size: 14px; }
@@ -225,6 +318,10 @@
     .user-chip .user-name { display: none; }
     .topbar-user { gap: 8px; }
     .topbar-logout { padding: 5px 10px !important; font-size: 12px; }
+  }
+  @media (max-width: 640px) {
+    .topbar-report-btn span { display: none; }
+    .topbar-report-btn { padding: 5px 8px !important; }
   }
   @media (max-width: 360px) {
     .topbar-brand-sub { display: none; }
@@ -1091,9 +1188,9 @@
 </style>
 </head>
 <body>
-<div id="root"></div>
+<div id="root"><div id="tt-splash" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#18181d;color:#8a8a9e;font-family:sans-serif;font-size:15px;letter-spacing:.02em">טוען...</div></div>
 
-<script type="text/babel">
+<script id="tt-src" type="text/plain">
 const { useState, useEffect, useMemo, useRef } = React;
 
 const APP_VERSION = '1.04';
@@ -3944,6 +4041,63 @@ function QuarterlyView({ entries, settings, user }) {
 }
 
 // ===================== Export CSV =====================
+// ===== ReportProblemModal =====
+function ReportProblemModal({ user, onClose }) {
+  const [text, setText] = useState('');
+  const [sent, setSent] = useState(false);
+
+  const send = () => {
+    if (!text.trim()) return;
+    const subject = encodeURIComponent(`[TimeKeeper] דוח תקלה מאת ${user.name}`);
+    const body = encodeURIComponent(
+      `שם: ${user.name}\nאימייל: ${user.email}\n\n---\n\n${text.trim()}`
+    );
+    window.open(`mailto:alonkatz135@gmail.com?subject=${subject}&body=${body}`, '_blank');
+    setSent(true);
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-title">דווח על בעיה</div>
+
+        {sent ? (
+          <div style={{textAlign:'center',padding:'20px 0'}}>
+            <div style={{fontSize:32,marginBottom:10}}>📨</div>
+            <div style={{fontWeight:600,marginBottom:6}}>תודה!</div>
+            <div style={{color:'var(--text-muted)',fontSize:14}}>נפתח חלון שליחת מייל — אם לא נפתח אוטומטית, שלח ידנית ל־alonkatz135@gmail.com</div>
+            <button className="btn btn-ghost" style={{marginTop:18}} onClick={onClose}>סגור</button>
+          </div>
+        ) : (
+          <>
+            <div style={{color:'var(--text-muted)',fontSize:14,marginBottom:14}}>
+              תאר את הבעיה שנתקלת בה. הדיווח יישלח ישירות אל המפתח.
+            </div>
+            <textarea
+              className="report-textarea"
+              placeholder="מה קרה? מה ניסית לעשות? מה ראית?"
+              value={text}
+              onChange={e => setText(e.target.value)}
+              autoFocus
+            />
+            <div style={{color:'var(--text-muted)',fontSize:12,marginTop:6,marginBottom:18}}>
+              הדיווח יישלח מכתובת המייל שלך ({user.email})
+            </div>
+            <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
+              <button className="btn btn-ghost" onClick={onClose}>ביטול</button>
+              <button
+                className="btn btn-primary"
+                onClick={send}
+                disabled={!text.trim()}
+              >שלח דיווח</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ExportCSVModal({ entries, settings, user, onClose }) {
   const [level, setLevel] = useState('monthly');
   const jobPercent = user.job_percent ?? 100;
@@ -4176,6 +4330,7 @@ function App() {
 
   // ---- Loading spinner ----
   const [globalLoading, setGlobalLoading] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
 
   const user = auth.currentUser;
 
@@ -4318,31 +4473,20 @@ ALTER PUBLICATION supabase_realtime ADD TABLE time_entries;`;
   }, [user?.id]);
 
   const checkDbSetup = async () => {
-    // Check days_off table
-    try {
-      await sb.select('days_off', 'limit=1');
-      setDbSetup(s => ({ ...s, daysOff: true }));
-    } catch(e) { setDbSetup(s => ({ ...s, daysOff: false })); }
-    // Check job_percent column
-    try {
-      await sb.select('profiles', 'select=job_percent&limit=1');
-      setDbSetup(s => ({ ...s, jobPercent: true }));
-    } catch(e) { setDbSetup(s => ({ ...s, jobPercent: false })); }
-    // Check salary columns
-    try {
-      await sb.select('profiles', 'select=salary_type,hourly_rate,base_salary&limit=1');
-      setDbSetup(s => ({ ...s, salary: true }));
-    } catch(e) { setDbSetup(s => ({ ...s, salary: false })); }
-    // Check expenses column
-    try {
-      await sb.select('time_entries', 'select=expenses&limit=1');
-      setDbSetup(s => ({ ...s, expenses: true }));
-    } catch(e) { setDbSetup(s => ({ ...s, expenses: false })); }
-    // Check tips/shift_bonus columns
-    try {
-      await sb.select('time_entries', 'select=tips,shift_bonus&limit=1');
-      setDbSetup(s => ({ ...s, tips: true }));
-    } catch(e) { setDbSetup(s => ({ ...s, tips: false })); }
+    const [daysOffRes, jobPctRes, salaryRes, expensesRes, tipsRes] = await Promise.allSettled([
+      sb.select('days_off', 'limit=1'),
+      sb.select('profiles', 'select=job_percent&limit=1'),
+      sb.select('profiles', 'select=salary_type,hourly_rate,base_salary&limit=1'),
+      sb.select('time_entries', 'select=expenses&limit=1'),
+      sb.select('time_entries', 'select=tips,shift_bonus&limit=1'),
+    ]);
+    setDbSetup({
+      daysOff:    daysOffRes.status  === 'fulfilled',
+      jobPercent: jobPctRes.status   === 'fulfilled',
+      salary:     salaryRes.status   === 'fulfilled',
+      expenses:   expensesRes.status === 'fulfilled',
+      tips:       tipsRes.status     === 'fulfilled',
+    });
   };
 
   const loadDaysOff = async () => {
@@ -4651,6 +4795,12 @@ ALTER PUBLICATION supabase_realtime ADD TABLE time_entries;`;
             <span className="user-name">{user.name}</span>
             {user.role === 'admin' && <span className="admin-badge">מנהל</span>}
           </div>
+          <button className="topbar-report-btn" onClick={() => setReportOpen(true)} title="דווח על בעיה">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span>בעיה?</span>
+          </button>
           <button className="btn btn-ghost topbar-logout" onClick={auth.logout}>יציאה</button>
         </div>
       </div>
@@ -4744,11 +4894,44 @@ ALTER PUBLICATION supabase_realtime ADD TABLE time_entries;`;
           currentUser={user}
         />
       )}
+      {reportOpen && (
+        <ReportProblemModal user={user} onClose={() => setReportOpen(false)} />
+      )}
     </div>
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+// ── Error Boundary ────────────────────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { crashed: false, error: null }; }
+  static getDerivedStateFromError(error) { return { crashed: true, error }; }
+  componentDidCatch(error, info) { console.error('App crashed:', error, info?.componentStack); }
+  render() {
+    if (!this.state.crashed) return this.props.children;
+    return (
+      <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'var(--bg)',color:'var(--text)',gap:16,padding:24,textAlign:'center'}}>
+        <div style={{fontSize:36}}>⚠️</div>
+        <div style={{fontSize:18,fontWeight:700,color:'var(--primary)'}}>משהו השתבש</div>
+        <div style={{color:'var(--text-muted)',fontSize:14,maxWidth:320}}>
+          אירעה שגיאה בלתי צפויה. אפשר לנסות לרענן את הדף.
+        </div>
+        {this.state.error && (
+          <div style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:9,padding:'8px 14px',fontSize:12,color:'var(--text-muted)',fontFamily:'monospace',maxWidth:400,wordBreak:'break-all'}}>
+            {String(this.state.error).slice(0, 200)}
+          </div>
+        )}
+        <button
+          className="btn btn-primary"
+          onClick={() => { this.setState({ crashed: false, error: null }); window.location.reload(); }}
+        >רענן דף</button>
+      </div>
+    );
+  }
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <ErrorBoundary><App /></ErrorBoundary>
+);
 </script>
 </body>
 </html>
