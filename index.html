@@ -4073,10 +4073,12 @@ const CONTACT_TOPICS = [
   { id: 'other',    emoji: '✉️', label: 'אחר',               en: 'Other'            },
 ];
 
+const RESEND_KEY = 're_QtFNCae3_6XnUEhzYpkTqfHiVo1B6duSK';
+
 function ReportProblemModal({ user, onClose }) {
   const [topic, setTopic] = useState('');
   const [text, setText] = useState('');
-  const [sent, setSent] = useState(false);
+  const [status, setStatus] = useState('idle'); // idle | sending | sent | error
 
   const selectedTopic = CONTACT_TOPICS.find(t => t.id === topic);
   const placeholder = {
@@ -4088,15 +4090,41 @@ function ReportProblemModal({ user, onClose }) {
     other:    'כתוב כאן...',
   }[topic] || 'כתוב כאן...';
 
-  const send = () => {
-    if (!topic || !text.trim()) return;
-    const topicLabel = selectedTopic ? `${selectedTopic.en} — ${selectedTopic.label}` : topic;
-    const subject = encodeURIComponent(`[TimeKeeper] ${topicLabel} — ${user.name}`);
-    const body = encodeURIComponent(
-      `נושא: ${topicLabel}\nשם: ${user.name}\nאימייל: ${user.email}\n\n---\n\n${text.trim()}`
-    );
-    window.open(`mailto:alonkatz135@gmail.com?subject=${subject}&body=${body}`, '_blank');
-    setSent(true);
+  const send = async () => {
+    if (!topic || !text.trim() || status === 'sending') return;
+    setStatus('sending');
+    const topicLabel = selectedTopic ? `${selectedTopic.emoji} ${selectedTopic.en} — ${selectedTopic.label}` : topic;
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${RESEND_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: 'TimeKeeper <onboarding@resend.dev>',
+          to: ['alonkatz135@gmail.com'],
+          subject: `[TimeKeeper] ${topicLabel} — ${user.name}`,
+          html: `
+            <div dir="rtl" style="font-family:sans-serif;max-width:520px;color:#222">
+              <h2 style="color:#F58800;margin-bottom:4px">TimeKeeper — פנייה חדשה</h2>
+              <hr style="border:none;border-top:1px solid #eee;margin:12px 0"/>
+              <table style="border-collapse:collapse;width:100%">
+                <tr><td style="padding:8px 12px;border:1px solid #eee;background:#f9f9f9;font-weight:600;width:110px">נושא</td><td style="padding:8px 12px;border:1px solid #eee">${topicLabel}</td></tr>
+                <tr><td style="padding:8px 12px;border:1px solid #eee;background:#f9f9f9;font-weight:600">שם</td><td style="padding:8px 12px;border:1px solid #eee">${user.name}</td></tr>
+                <tr><td style="padding:8px 12px;border:1px solid #eee;background:#f9f9f9;font-weight:600">אימייל</td><td style="padding:8px 12px;border:1px solid #eee"><a href="mailto:${user.email}">${user.email}</a></td></tr>
+              </table>
+              <div style="margin-top:16px;padding:14px 16px;background:#f5f5f5;border-radius:6px;white-space:pre-wrap;line-height:1.7">${text.trim().replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+            </div>
+          `,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setStatus('sent');
+    } catch(e) {
+      console.error('send contact:', e);
+      setStatus('error');
+    }
   };
 
   return (
@@ -4104,16 +4132,12 @@ function ReportProblemModal({ user, onClose }) {
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-title">צור קשר</div>
 
-        {sent ? (
+        {status === 'sent' ? (
           <div style={{textAlign:'center',padding:'20px 0'}}>
-            <div style={{fontSize:36,marginBottom:10}}>📨</div>
-            <div style={{fontWeight:600,fontSize:16,marginBottom:8}}>תודה!</div>
-            <div style={{color:'var(--text-muted)',fontSize:14,lineHeight:1.6}}>
-              נפתח חלון שליחת מייל.<br/>
-              אם לא נפתח אוטומטית — שלח ידנית ל־<br/>
-              <span style={{color:'var(--primary)'}}>alonkatz135@gmail.com</span>
-            </div>
-            <button className="btn btn-ghost" style={{marginTop:20}} onClick={onClose}>סגור</button>
+            <div style={{fontSize:36,marginBottom:10}}>✅</div>
+            <div style={{fontWeight:600,fontSize:16,marginBottom:8}}>הפנייה נשלחה!</div>
+            <div style={{color:'var(--text-muted)',fontSize:14}}>המייל הגיע ישירות למפתח. נחזור אליך בקרוב.</div>
+            <button className="btn btn-primary" style={{marginTop:20}} onClick={onClose}>סגור</button>
           </div>
         ) : (
           <>
@@ -4137,22 +4161,26 @@ function ReportProblemModal({ user, onClose }) {
                   className="report-textarea"
                   placeholder={placeholder}
                   value={text}
-                  onChange={e => setText(e.target.value)}
+                  onChange={e => { setText(e.target.value); if (status === 'error') setStatus('idle'); }}
                   autoFocus
                 />
                 <div style={{color:'var(--text-muted)',fontSize:12,marginTop:6,marginBottom:16}}>
-                  יישלח מ־{user.email}
+                  נשלח ישירות למפתח
                 </div>
               </>
             )}
 
+            {status === 'error' && (
+              <div className="form-error" style={{marginBottom:12}}>שליחה נכשלה — בדוק חיבור לאינטרנט ונסה שוב</div>
+            )}
+
             <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
-              <button className="btn btn-ghost" onClick={onClose}>ביטול</button>
+              <button className="btn btn-ghost" onClick={onClose} disabled={status === 'sending'}>ביטול</button>
               <button
                 className="btn btn-primary"
                 onClick={send}
-                disabled={!topic || !text.trim()}
-              >שלח</button>
+                disabled={!topic || !text.trim() || status === 'sending'}
+              >{status === 'sending' ? 'שולח...' : 'שלח'}</button>
             </div>
           </>
         )}
