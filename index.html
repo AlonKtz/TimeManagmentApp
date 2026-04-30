@@ -281,17 +281,40 @@
     gap: 5px;
     white-space: nowrap;
     flex-shrink: 0;
-    min-height: 34px !important;
-    padding: 5px 11px !important;
+    min-height: 30px;
+    padding: 4px 11px;
+    margin-right: 10px;
     color: var(--text-muted);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: transparent;
     font-size: 13px;
     cursor: pointer;
-    transition: color .15s, border-color .15s;
+    transition: color .15s, border-color .15s, background .15s;
   }
-  .topbar-report-btn:hover { color: var(--text); border-color: var(--border-strong); }
+  .topbar-report-btn:hover { color: var(--text); border-color: var(--border-strong); background: var(--surface-2); }
+  .report-topic-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .report-topic-chip {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    color: var(--text-muted);
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color .15s, color .15s, background .15s;
+    text-align: right;
+  }
+  .report-topic-chip:hover { border-color: var(--border-strong); color: var(--text); }
+  .report-topic-chip.active { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
   .report-textarea {
     width: 100%;
     min-height: 120px;
@@ -318,10 +341,9 @@
     .user-chip .user-name { display: none; }
     .topbar-user { gap: 8px; }
     .topbar-logout { padding: 5px 10px !important; font-size: 12px; }
-  }
-  @media (max-width: 640px) {
     .topbar-report-btn span { display: none; }
-    .topbar-report-btn { padding: 5px 8px !important; }
+    .topbar-report-btn { padding: 4px 8px; margin-right: 6px; }
+    .report-topic-grid { grid-template-columns: 1fr; }
   }
   @media (max-width: 360px) {
     .topbar-brand-sub { display: none; }
@@ -4042,15 +4064,36 @@ function QuarterlyView({ entries, settings, user }) {
 
 // ===================== Export CSV =====================
 // ===== ReportProblemModal =====
+const CONTACT_TOPICS = [
+  { id: 'bug',      emoji: '🐛', label: 'דיווח על בעיה',    en: 'Bug Report'       },
+  { id: 'feature',  emoji: '💡', label: 'בקשת פיצ׳ר',       en: 'Feature Request'  },
+  { id: 'business', emoji: '💼', label: 'עניין עסקי',        en: 'Business Matter'  },
+  { id: 'ux',       emoji: '🎨', label: 'חוויית משתמש',      en: 'UX / Design'      },
+  { id: 'data',     emoji: '📊', label: 'בעיה בנתונים',      en: 'Data Issue'       },
+  { id: 'other',    emoji: '✉️', label: 'אחר',               en: 'Other'            },
+];
+
 function ReportProblemModal({ user, onClose }) {
+  const [topic, setTopic] = useState('');
   const [text, setText] = useState('');
   const [sent, setSent] = useState(false);
 
+  const selectedTopic = CONTACT_TOPICS.find(t => t.id === topic);
+  const placeholder = {
+    bug:      'מה קרה? מה ניסית לעשות? מה ראית?',
+    feature:  'תאר את הפיצ׳ר שהיית רוצה לראות...',
+    business: 'ספר לי על ההצעה או העניין שלך...',
+    ux:       'מה הרגשת לא נוח? מה ניתן לשפר?',
+    data:     'אילו נתונים לא נראים נכון?',
+    other:    'כתוב כאן...',
+  }[topic] || 'כתוב כאן...';
+
   const send = () => {
-    if (!text.trim()) return;
-    const subject = encodeURIComponent(`[TimeKeeper] דוח תקלה מאת ${user.name}`);
+    if (!topic || !text.trim()) return;
+    const topicLabel = selectedTopic ? `${selectedTopic.en} — ${selectedTopic.label}` : topic;
+    const subject = encodeURIComponent(`[TimeKeeper] ${topicLabel} — ${user.name}`);
     const body = encodeURIComponent(
-      `שם: ${user.name}\nאימייל: ${user.email}\n\n---\n\n${text.trim()}`
+      `נושא: ${topicLabel}\nשם: ${user.name}\nאימייל: ${user.email}\n\n---\n\n${text.trim()}`
     );
     window.open(`mailto:alonkatz135@gmail.com?subject=${subject}&body=${body}`, '_blank');
     setSent(true);
@@ -4059,37 +4102,57 @@ function ReportProblemModal({ user, onClose }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-title">דווח על בעיה</div>
+        <div className="modal-title">צור קשר</div>
 
         {sent ? (
           <div style={{textAlign:'center',padding:'20px 0'}}>
-            <div style={{fontSize:32,marginBottom:10}}>📨</div>
-            <div style={{fontWeight:600,marginBottom:6}}>תודה!</div>
-            <div style={{color:'var(--text-muted)',fontSize:14}}>נפתח חלון שליחת מייל — אם לא נפתח אוטומטית, שלח ידנית ל־alonkatz135@gmail.com</div>
-            <button className="btn btn-ghost" style={{marginTop:18}} onClick={onClose}>סגור</button>
+            <div style={{fontSize:36,marginBottom:10}}>📨</div>
+            <div style={{fontWeight:600,fontSize:16,marginBottom:8}}>תודה!</div>
+            <div style={{color:'var(--text-muted)',fontSize:14,lineHeight:1.6}}>
+              נפתח חלון שליחת מייל.<br/>
+              אם לא נפתח אוטומטית — שלח ידנית ל־<br/>
+              <span style={{color:'var(--primary)'}}>alonkatz135@gmail.com</span>
+            </div>
+            <button className="btn btn-ghost" style={{marginTop:20}} onClick={onClose}>סגור</button>
           </div>
         ) : (
           <>
-            <div style={{color:'var(--text-muted)',fontSize:14,marginBottom:14}}>
-              תאר את הבעיה שנתקלת בה. הדיווח יישלח ישירות אל המפתח.
+            <div style={{color:'var(--text-muted)',fontSize:13,marginBottom:14}}>בחר נושא:</div>
+            <div className="report-topic-grid">
+              {CONTACT_TOPICS.map(t => (
+                <button
+                  key={t.id}
+                  className={`report-topic-chip${topic === t.id ? ' active' : ''}`}
+                  onClick={() => setTopic(t.id)}
+                >
+                  <span style={{fontSize:16}}>{t.emoji}</span>
+                  <span>{t.label}</span>
+                </button>
+              ))}
             </div>
-            <textarea
-              className="report-textarea"
-              placeholder="מה קרה? מה ניסית לעשות? מה ראית?"
-              value={text}
-              onChange={e => setText(e.target.value)}
-              autoFocus
-            />
-            <div style={{color:'var(--text-muted)',fontSize:12,marginTop:6,marginBottom:18}}>
-              הדיווח יישלח מכתובת המייל שלך ({user.email})
-            </div>
+
+            {topic && (
+              <>
+                <textarea
+                  className="report-textarea"
+                  placeholder={placeholder}
+                  value={text}
+                  onChange={e => setText(e.target.value)}
+                  autoFocus
+                />
+                <div style={{color:'var(--text-muted)',fontSize:12,marginTop:6,marginBottom:16}}>
+                  יישלח מ־{user.email}
+                </div>
+              </>
+            )}
+
             <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
               <button className="btn btn-ghost" onClick={onClose}>ביטול</button>
               <button
                 className="btn btn-primary"
                 onClick={send}
-                disabled={!text.trim()}
-              >שלח דיווח</button>
+                disabled={!topic || !text.trim()}
+              >שלח</button>
             </div>
           </>
         )}
@@ -4396,7 +4459,13 @@ ALTER PUBLICATION supabase_realtime ADD TABLE time_entries;`;
   useEffect(() => {
     if (!user || !navigator.geolocation) return;
     if (localStorage.getItem('tt_geo_enabled') !== '1') return;
-    if (Notification.permission === 'default') Notification.requestPermission();
+    const notifSupported = typeof Notification !== 'undefined';
+    if (notifSupported && Notification.permission === 'default') Notification.requestPermission();
+    const sendNotif = (title, body) => {
+      if (notifSupported && Notification.permission === 'granted') {
+        try { new Notification(title, { body, icon: '' }); } catch(e) {}
+      }
+    };
     const check = () => {
       const coordsStr = localStorage.getItem('tt_geo_coords');
       if (!coordsStr) return;
@@ -4404,10 +4473,10 @@ ALTER PUBLICATION supabase_realtime ADD TABLE time_entries;`;
       const radius = parseInt(localStorage.getItem('tt_geo_radius') || '200');
       navigator.geolocation.getCurrentPosition(pos => {
         const dist = haversineMeters(pos.coords, office);
-        if (dist <= radius && !activePunch && Notification.permission === 'granted') {
-          new Notification('מעקב שעות 🕐', { body: 'נראה שהגעת למשרד — רוצה להתחיל שעון נוכחות?', icon: '' });
-        } else if (dist > radius * 2 && activePunch && Notification.permission === 'granted') {
-          new Notification('מעקב שעות 🕐', { body: 'נראה שעזבת את המשרד — רוצה לעצור את שעון הנוכחות?', icon: '' });
+        if (dist <= radius && !activePunch) {
+          sendNotif('מעקב שעות 🕐', 'נראה שהגעת למשרד — רוצה להתחיל שעון נוכחות?');
+        } else if (dist > radius * 2 && activePunch) {
+          sendNotif('מעקב שעות 🕐', 'נראה שעזבת את המשרד — רוצה לעצור את שעון הנוכחות?');
         }
       }, () => {});
     };
@@ -4788,6 +4857,12 @@ ALTER PUBLICATION supabase_realtime ADD TABLE time_entries;`;
             <span className="topbar-brand-name">TimeKeeper</span>
             <span className="topbar-brand-sub">by alon katz</span>
           </div>
+          <button className="topbar-report-btn" onClick={() => setReportOpen(true)} title="צור קשר">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span>צור קשר</span>
+          </button>
         </div>
         <div className="topbar-user">
           <div className="user-chip">
@@ -4795,12 +4870,6 @@ ALTER PUBLICATION supabase_realtime ADD TABLE time_entries;`;
             <span className="user-name">{user.name}</span>
             {user.role === 'admin' && <span className="admin-badge">מנהל</span>}
           </div>
-          <button className="topbar-report-btn" onClick={() => setReportOpen(true)} title="דווח על בעיה">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-            <span>בעיה?</span>
-          </button>
           <button className="btn btn-ghost topbar-logout" onClick={auth.logout}>יציאה</button>
         </div>
       </div>
