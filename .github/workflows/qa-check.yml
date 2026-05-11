@@ -101,8 +101,17 @@ jobs:
           pages_date     = pc.get('author', {}).get('date', '')
           pages_ago      = ago(pages_date)
 
-          # Behind? (simple check: same SHA?)
-          deploy_lag = 'up to date' if master_sha == pages_sha else f'master is ahead ({master_sha} vs {pages_sha})'
+          # gh-pages commit messages are "deploy: <full-sha>", extract that SHA
+          pages_deployed_sha = ''
+          raw_pages_msg = pc.get('message', '')
+          if raw_pages_msg.startswith('deploy:'):
+              pages_deployed_sha = raw_pages_msg.split('deploy:')[-1].strip()[:7]
+          else:
+              pages_deployed_sha = pages_sha  # fallback
+
+          full_master_sha = master.get('sha', '')
+          deploy_synced = full_master_sha.startswith(pages_deployed_sha) if pages_deployed_sha else master_sha == pages_sha
+          deploy_lag = 'up to date' if deploy_synced else f'master is ahead ({master_sha} vs deployed {pages_deployed_sha})'
 
           # PRs and issues
           open_prs    = len(prs) if isinstance(prs, list) else 0
@@ -134,37 +143,45 @@ jobs:
           print(f"run_fail={run_fail}")
           PYEOF
 
-      # ── 3. DB sanity (lightweight — just user count) ───────────────────────
+      # ── 3. DB sanity (lightweight — just row counts) ──────────────────────
       - name: DB sanity check
         id: db
         env:
           SUPABASE_URL: https://yxmbammlzweasjvpouqn.supabase.co
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
+          curl -sf \
+            "$SUPABASE_URL/rest/v1/profiles?select=id,status" \
+            -H "apikey: $SUPABASE_SERVICE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+            > /tmp/db_profiles.json || echo '[]' > /tmp/db_profiles.json
+
+          curl -sf \
+            "$SUPABASE_URL/rest/v1/time_entries?select=id" \
+            -H "apikey: $SUPABASE_SERVICE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+            > /tmp/db_entries.json || echo '[]' > /tmp/db_entries.json
+
+          curl -sf \
+            "$SUPABASE_URL/rest/v1/days_off?select=id" \
+            -H "apikey: $SUPABASE_SERVICE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+            > /tmp/db_daysoff.json || echo '[]' > /tmp/db_daysoff.json
+
           python3 << 'PYEOF' >> $GITHUB_OUTPUT
-          import json, urllib.request, os, urllib.error
+          import json
 
-          url = os.environ['SUPABASE_URL']
-          key = os.environ['SUPABASE_SERVICE_KEY']
-
-          def fetch(table, select='id'):
-              req = urllib.request.Request(
-                  f"{url}/rest/v1/{table}?select={select}",
-                  headers={"apikey": key, "Authorization": f"Bearer {key}"}
-              )
+          def load(p):
               try:
-                  with urllib.request.urlopen(req) as r:
-                      d = json.loads(r.read())
-                      return d if isinstance(d, list) else []
-              except Exception as e:
-                  print(f"db_error={e}", flush=True)
-                  return None
+                  d = json.load(open(p))
+                  return d if isinstance(d, list) else None
+              except: return None
 
-          profiles = fetch('profiles', 'id,status')
-          entries  = fetch('time_entries', 'id')
-          daysoff  = fetch('days_off', 'id')
+          profiles = load('/tmp/db_profiles.json')
+          entries  = load('/tmp/db_entries.json')
+          daysoff  = load('/tmp/db_daysoff.json')
 
-          db_ok = all(x is not None for x in [profiles, entries, daysoff])
+          db_ok         = all(x is not None for x in [profiles, entries, daysoff])
           total_users   = len(profiles) if profiles is not None else 'ERR'
           pending       = sum(1 for u in (profiles or []) if u.get('status') == 'pending')
           total_entries = len(entries)  if entries  is not None else 'ERR'
