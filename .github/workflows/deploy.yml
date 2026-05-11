@@ -24,8 +24,16 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Verify build output
+        run: |
+          echo "=== dist/ ===" && ls -lh dist/
+          echo "=== dist/assets/ ===" && ls -lh dist/assets/ 2>/dev/null || echo "(no assets dir)"
+          echo "index.html first 3 lines:" && head -3 dist/index.html
+
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
+          force_orphan: true
+          commit_message: "deploy: ${{ github.sha }}"
