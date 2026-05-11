@@ -1,40 +1,48 @@
-import localforage from 'localforage';
+// ── Token (Supabase JWT session) ─────────────────────────────────────────────
+const TOKEN_KEY = 'tt_session';
 
-// Configure localforage instance
-localforage.config({
-  name: 'time-tracker',
-  storeName: 'tt_store',
-});
-
-/**
- * Save a value to localforage (async, fire-and-forget safe).
- */
-export async function saveData(key, val) {
+export const loadToken = () => {
   try {
-    await localforage.setItem(key, val);
-  } catch (e) {
-    console.error('[storage] saveData error', key, e);
+    const v = localStorage.getItem(TOKEN_KEY);
+    return v ? JSON.parse(v) : null;
+  } catch {
+    return null;
   }
-}
+};
 
-/**
- * Load multiple keys from localforage.
- * Returns an object { key: value } with null for missing keys.
- */
-export async function loadAllData(keys) {
-  const result = {};
-  await Promise.all(keys.map(async (k) => {
-    try {
-      result[k] = await localforage.getItem(k);
-    } catch {
-      result[k] = null;
+export const saveToken = (session) => {
+  try {
+    if (session) {
+      localStorage.setItem(TOKEN_KEY, JSON.stringify(session));
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
     }
-  }));
-  return result;
-}
+  } catch {}
+};
 
-// ---- Legacy synchronous helpers (for AdminSettings which still uses them) ----
+// ── Active punch (persisted locally as a fallback for offline resilience) ───
+const PUNCH_KEY = 'tt_punch';
 
+export const loadPunch = () => {
+  try {
+    const v = localStorage.getItem(PUNCH_KEY);
+    return v ? JSON.parse(v) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const savePunch = (punch) => {
+  try {
+    if (punch) {
+      localStorage.setItem(PUNCH_KEY, JSON.stringify(punch));
+    } else {
+      localStorage.removeItem(PUNCH_KEY);
+    }
+  } catch {}
+};
+
+// ── Generic JSON helpers (used for non-sensitive flags) ─────────────────────
 export const loadJSON = (k, fallback) => {
   try {
     const v = localStorage.getItem(k);
@@ -44,4 +52,8 @@ export const loadJSON = (k, fallback) => {
   }
 };
 
-export const saveJSON = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+export const saveJSON = (k, v) => {
+  try {
+    localStorage.setItem(k, JSON.stringify(v));
+  } catch {}
+};

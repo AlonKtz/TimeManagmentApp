@@ -1,152 +1,196 @@
-import { useState, useEffect, useMemo } from 'react';
-import * as OTPAuth from 'otpauth';
-import { STORAGE_KEYS } from '../constants';
-import { saveData, loadAllData } from '../utils/storage';
-import { hashPwd } from '../utils/business';
+import { useState, useEffect } from 'react';
+import sb from '../lib/supabase';
+import { loadToken, saveToken, savePunch } from '../utils/storage';
 
-function makeTOTP(username, secretBase32) {
-  return new OTPAuth.TOTP({
-    issuer: 'מעקב שעות',
-    label: username,
-    algorithm: 'SHA1',
-    digits: 6,
-    period: 30,
-    secret: OTPAuth.Secret.fromBase32(secretBase32),
-  });
+// Map DB profile row (snake_case) → app-friendly object
+function normalizeProfile(p) {
+  return {
+    ...p,
+    jobPercent: p.job_percent ?? 100,
+    username: p.email,        // compat alias (shown in account/admin UI)
+    status: 'active',         // all Supabase accounts are active
+    twoFactorSecret: null,    // TOTP not used in Supabase version
+    createdAt: p.created_at,
+  };
 }
 
 export function useAuth() {
-  const [users, setUsers] = useState([]);
-  const [session, setSession] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [users, setUsersState] = useState([]);   // admin-only: all profiles
   const [authLoaded, setAuthLoaded] = useState(false);
 
-  // Load from localforage on mount
+  // ── Restore session on mount ───────────────────────────────────────────────
   useEffect(() => {
-    loadAllData([STORAGE_KEYS.users, STORAGE_KEYS.session]).then((data) => {
-      setUsers(data[STORAGE_KEYS.users] || []);
-      setSession(data[STORAGE_KEYS.session] || null);
+    const session = loadToken();
+    if (session?.access_token) {
+      sb._token = session.access_token;
+      sb.getUser().then(async (u) => {
+        if (u?.id) {
+          await refreshProfile(u.id);
+        } else if (session.refresh_token) {
+          // Access token expired — try to refresh
+          const res = await sb.refreshSession(session.refresh_token);
+          if (res.access_token) {
+            sb._token = res.access_token;
+            saveToken({ access_token: res.access_token, refresh_token: res.refresh_token });
+            await refreshProfile(res.user.id);
+          } else {
+            saveToken(null);
+            setAuthLoaded(true);
+          }
+        } else {
+          saveToken(null);
+          setAuthLoaded(true);
+        }
+      });
+    } else {
       setAuthLoaded(true);
-    });
+    }
   }, []);
 
-  // Save users on change (after loaded)
-  useEffect(() => {
-    if (!authLoaded) return;
-    saveData(STORAGE_KEYS.users, users);
-  }, [users, authLoaded]);
-
-  // Save session on change (after loaded)
-  useEffect(() => {
-    if (!authLoaded) return;
-    if (session) {
-      saveData(STORAGE_KEYS.session, session);
-    } else {
-      saveData(STORAGE_KEYS.session, null);
+  const refreshProfile = async (userId) => {
+    try {
+      const rows = await sb.select('profiles', `id=eq.${userId}`);
+      if (rows[0]) {
+        setCurrentUser(normalizeProfile(rows[0]));
+      } else {
+        // Profile not yet created by trigger — retry once after a short delay
+        await new Promise((r) => setTimeout(r, 1500));
+        const rows2 = await sb.select('profiles', `id=eq.${userId}`);
+        if (rows2[0]) setCurrentUser(normalizeProfile(rows2[0]));
+      }
+    } catch (e) {
+      console.error('[auth] profile load:', e);
     }
-  }, [session, authLoaded]);
-
-  const register = ({ username, password, name }) => {
-    const u = username.trim().toLowerCase();
-    if (!u || !password || !name.trim()) return { error: 'נא למלא את כל השדות' };
-    if (u.length < 3) return { error: 'שם המשתמש חייב להיות לפחות 3 תווים' };
-    if (password.length < 4) return { error: 'הסיסמה חייבת להיות לפחות 4 תווים' };
-    if (users.find(x => x.username === u)) return { error: 'שם המשתמש כבר קיים' };
-    const isFirst = users.length === 0;
-    const newUser = {
-      id: 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
-      username: u,
-      passwordHash: hashPwd(password),
-      name: name.trim(),
-      role: isFirst ? 'admin' : 'user',
-      status: isFirst ? 'active' : 'pending',
-      twoFactorSecret: null,
-      jobPercent: 100,
-      createdAt: new Date().toISOString(),
-    };
-    setUsers(prev => [...prev, newUser]);
-    if (isFirst) setSession({ userId: newUser.id });
-    return { ok: true, firstAdmin: isFirst, pending: !isFirst };
+    setAuthLoaded(true);
   };
 
-  const login = ({ username, password }) => {
-    const u = username.trim().toLowerCase();
-    const user = users.find(x => x.username === u);
-    if (!user) return { error: 'שם משתמש או סיסמה שגויים' };
-    if (user.passwordHash !== hashPwd(password)) return { error: 'שם משתמש או סיסמה שגויים' };
-    if (user.status === 'pending') return { error: 'החשבון שלך ממתין לאישור מנהל המערכת' };
-    if (user.twoFactorSecret) return { needs2FA: true, tempUserId: user.id };
-    setSession({ userId: user.id });
+  // ── register ─────────────────────────────────────────────────────────────
+  const register = async ({ email, password, name }) => {
+    email = (email || '').trim().toLowerCase();
+    name  = (name  || '').trim();
+    if (!email || !password || !name) return { error: 'נא למלא את כל השדות' };
+    if (password.length < 6) return { error: 'הסיסמה חייבת להיות לפחות 6 תווים' };
+    const emailOk = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email);
+    if (!emailOk) return { error: 'כתובת האימייל אינה תקינה (דוגמה: user@company.com)' };
+
+    const res = await sb.signUp(email, password, name);
+    if (res.error) return { error: res.error.message || String(res.error) };
+
+    if (res.access_token) {
+      sb._token = res.access_token;
+      saveToken({ access_token: res.access_token, refresh_token: res.refresh_token });
+      await refreshProfile(res.user.id);
+    }
+    return { ok: true, needsConfirm: !res.access_token };
+  };
+
+  // ── login ────────────────────────────────────────────────────────────────
+  const login = async ({ email, password }) => {
+    email = (email || '').trim().toLowerCase();
+    const res = await sb.signIn(email, password);
+
+    if (res.error || !res.access_token) {
+      const msg = (res.error_description || res.error?.message || '').toLowerCase();
+      if (msg.includes('email not confirmed')) {
+        return {
+          error: 'האימייל טרם אומת. בדוק את תיבת הדואר שלך ולחץ על קישור האישור.',
+          pendingVerification: true,
+        };
+      }
+      if (msg.includes('invalid login') || msg.includes('user not found') || msg.includes('no user')) {
+        try {
+          const rows = await sb.select('profiles', `email=eq.${encodeURIComponent(email)}&select=id`);
+          if (Array.isArray(rows) && rows.length === 0) return { notRegistered: true };
+          return { error: 'הסיסמה שגויה — נסה שוב' };
+        } catch {}
+      }
+      return { error: 'אימייל או סיסמה שגויים' };
+    }
+
+    if (res.user?.email_confirmed_at === null) {
+      return {
+        error: 'האימייל טרם אומת. בדוק את תיבת הדואר שלך ולחץ על קישור האישור.',
+        pendingVerification: true,
+      };
+    }
+
+    sb._token = res.access_token;
+    saveToken({ access_token: res.access_token, refresh_token: res.refresh_token });
+    await refreshProfile(res.user.id);
     return { ok: true };
   };
 
-  const completeTwoFactorLogin = ({ userId, token }) => {
-    const user = users.find(u => u.id === userId);
-    if (!user?.twoFactorSecret) return { error: 'שגיאת אימות' };
+  // ── logout ───────────────────────────────────────────────────────────────
+  const logout = async () => {
+    await sb.signOut();
+    saveToken(null);
+    savePunch(null);
+    setCurrentUser(null);
+  };
+
+  // ── Admin: load all profiles ──────────────────────────────────────────────
+  const loadUsers = async () => {
     try {
-      const totp = makeTOTP(user.username, user.twoFactorSecret);
-      const delta = totp.validate({ token: token.replace(/\s/g, ''), window: 1 });
-      if (delta !== null) {
-        setSession({ userId });
-        return { ok: true };
+      const rows = await sb.select('profiles', 'order=created_at.asc');
+      setUsersState(rows.map(normalizeProfile));
+    } catch (e) {
+      console.error('[auth] loadUsers:', e);
+    }
+  };
+
+  // Admin: update user role(s) then reload list
+  const setUsers = async (updatedList) => {
+    for (const u of updatedList) {
+      const orig = users.find((x) => x.id === u.id);
+      if (orig && orig.role !== u.role) {
+        try {
+          await sb.update('profiles', { role: u.role }, 'id', u.id);
+        } catch (e) {
+          console.error('[auth] setUsers role update:', e);
+        }
       }
-      return { error: 'קוד לא תקין. נסה שנית.' };
-    } catch {
-      return { error: 'קוד לא תקין. נסה שנית.' };
     }
+    await loadUsers();
   };
 
-  const enableTwoFactor = ({ userId, secret, token }) => {
+  // Admin: delete all entries + profile row for a user
+  const deleteUser = async (userId) => {
     try {
-      const user = users.find(u => u.id === userId);
-      const totp = makeTOTP(user.username, secret);
-      const delta = totp.validate({ token: token.replace(/\s/g, ''), window: 1 });
-      if (delta === null) return { error: 'קוד לא תקין. נסה שנית.' };
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, twoFactorSecret: secret } : u));
-      return { ok: true };
-    } catch {
-      return { error: 'קוד לא תקין. נסה שנית.' };
+      await sb.delete('time_entries', 'user_id', userId);
+      await sb.delete('profiles', 'id', userId);
+    } catch (e) {
+      console.error('[auth] deleteUser:', e);
     }
+    setUsersState((prev) => prev.filter((u) => u.id !== userId));
   };
 
-  const disableTwoFactor = ({ userId, token }) => {
-    const user = users.find(u => u.id === userId);
-    if (!user?.twoFactorSecret) return { error: 'שגיאה' };
+  // ── Update job percent ───────────────────────────────────────────────────
+  const updateJobPercent = async ({ userId, percent }) => {
     try {
-      const totp = makeTOTP(user.username, user.twoFactorSecret);
-      const delta = totp.validate({ token: token.replace(/\s/g, ''), window: 1 });
-      if (delta === null) return { error: 'קוד לא תקין' };
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, twoFactorSecret: null } : u));
-      return { ok: true };
-    } catch {
-      return { error: 'קוד לא תקין' };
+      await sb.updateProfile(userId, { job_percent: percent });
+      setCurrentUser((u) => u ? { ...u, job_percent: percent, jobPercent: percent } : u);
+    } catch (e) {
+      console.error('[auth] updateJobPercent:', e);
     }
   };
 
-  const updateJobPercent = ({ userId, percent }) => {
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, jobPercent: percent } : u));
-  };
-
-  const approveUser = (userId) => {
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'active' } : u));
-  };
-
-  const rejectUser = (userId) => {
-    setUsers(prev => prev.filter(u => u.id !== userId));
-  };
-
-  const logout = () => setSession(null);
-
-  const currentUser = useMemo(
-    () => users.find(u => u.id === session?.userId) || null,
-    [users, session]
-  );
+  // No-ops kept for component interface compat (no pending approval in Supabase)
+  const approveUser = () => {};
+  const rejectUser  = () => {};
 
   return {
-    users, setUsers, currentUser, authLoaded,
-    register, login, logout,
-    completeTwoFactorLogin,
-    enableTwoFactor, disableTwoFactor,
+    currentUser,
+    users,
+    authLoaded,
+    register,
+    login,
+    logout,
+    loadUsers,
+    setUsers,
+    deleteUser,
     updateJobPercent,
-    approveUser, rejectUser,
+    approveUser,
+    rejectUser,
   };
 }
