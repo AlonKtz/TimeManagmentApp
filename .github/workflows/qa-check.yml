@@ -9,285 +9,370 @@ jobs:
   qa:
     runs-on: ubuntu-latest
     steps:
+
+      # ── 1. Live health + perf ──────────────────────────────────────────────
       - name: Check app is live
         id: health
         run: |
+          HEADERS=$(curl -sI https://alonktz.github.io/TimeManagmentApp/)
           START_NS=$(date +%s%N)
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://alonktz.github.io/TimeManagmentApp/)
           END_NS=$(date +%s%N)
           MS=$(( (END_NS - START_NS) / 1000000 ))
-          echo "status=$STATUS" >> $GITHUB_OUTPUT
-          echo "response_ms=$MS" >> $GITHUB_OUTPUT
-          echo "app_ok=$([ "$STATUS" = "200" ] && echo true || echo false)" >> $GITHUB_OUTPUT
 
-      - name: Query Supabase stats
-        id: stats
+          BUNDLE_BYTES=$(echo "$HEADERS" | grep -i content-length | awk '{print $2}' | tr -d '\r')
+          BUNDLE_KB=$(( ${BUNDLE_BYTES:-0} / 1024 ))
+          ENCODING=$(echo "$HEADERS" | grep -i content-encoding | awk '{print $2}' | tr -d '\r')
+          CACHE=$(echo "$HEADERS" | grep -i cache-control | cut -d: -f2- | tr -d '\r' | xargs)
+
+          echo "status=$STATUS"                                   >> $GITHUB_OUTPUT
+          echo "response_ms=$MS"                                  >> $GITHUB_OUTPUT
+          echo "app_ok=$([ "$STATUS" = "200" ] && echo true || echo false)" >> $GITHUB_OUTPUT
+          echo "bundle_kb=${BUNDLE_KB:-N/A}"                      >> $GITHUB_OUTPUT
+          echo "encoding=${ENCODING:-none}"                       >> $GITHUB_OUTPUT
+          echo "cache_control=${CACHE:-N/A}"                      >> $GITHUB_OUTPUT
+
+      # ── 2. Deployment + repo info (GitHub API) ─────────────────────────────
+      - name: Query GitHub repo stats
+        id: repo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO="AlonKtz/TimeManagmentApp"
+          API="https://api.github.com/repos/$REPO"
+          AUTH="-H \"Authorization: Bearer $GH_TOKEN\" -H \"Accept: application/vnd.github.v3+json\""
+
+          # Last commit on master
+          curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            "$API/commits/master" > /tmp/last_commit.json
+
+          # Last commit on gh-pages (= what's live)
+          curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            "$API/commits/gh-pages" > /tmp/gh_pages_commit.json
+
+          # Open PRs
+          curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            "$API/pulls?state=open&per_page=100" > /tmp/prs.json
+
+          # Open issues (exclude PRs)
+          curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            "$API/issues?state=open&per_page=100" > /tmp/issues.json
+
+          # Recent workflow runs (this workflow)
+          curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            "$API/actions/runs?per_page=10&branch=master" > /tmp/runs.json
+
+          python3 << 'PYEOF' >> $GITHUB_OUTPUT
+          import json
+          from datetime import datetime, timezone
+
+          def load(p):
+              try: return json.load(open(p))
+              except: return {}
+
+          def ago(iso):
+              if not iso: return 'N/A'
+              try:
+                  dt = datetime.fromisoformat(iso.replace('Z', '+00:00'))
+                  diff = datetime.now(timezone.utc) - dt
+                  h = int(diff.total_seconds() // 3600)
+                  if h < 24: return f"{h}h ago"
+                  return f"{h // 24}d ago"
+              except: return 'N/A'
+
+          master = load('/tmp/last_commit.json')
+          pages  = load('/tmp/gh_pages_commit.json')
+          prs    = load('/tmp/prs.json')
+          issues = load('/tmp/issues.json')
+          runs   = load('/tmp/runs.json')
+
+          # Master commit
+          mc = master.get('commit', {})
+          master_sha     = master.get('sha', 'N/A')[:7]
+          master_msg     = mc.get('message', 'N/A').splitlines()[0][:60]
+          master_author  = mc.get('author', {}).get('name', 'N/A')
+          master_date    = mc.get('author', {}).get('date', '')
+          master_ago     = ago(master_date)
+
+          # gh-pages commit
+          pc = pages.get('commit', {})
+          pages_sha      = pages.get('sha', 'N/A')[:7]
+          pages_msg      = pc.get('message', 'N/A').splitlines()[0][:60]
+          pages_date     = pc.get('author', {}).get('date', '')
+          pages_ago      = ago(pages_date)
+
+          # Behind? (simple check: same SHA?)
+          deploy_lag = 'up to date' if master_sha == pages_sha else f'master is ahead ({master_sha} vs {pages_sha})'
+
+          # PRs and issues
+          open_prs    = len(prs) if isinstance(prs, list) else 0
+          open_issues = sum(1 for i in (issues if isinstance(issues, list) else []) if 'pull_request' not in i)
+
+          # CI run history — last 10 runs
+          run_list = (runs.get('workflow_runs') or [])[:10]
+          run_dots = ''.join(
+              '✅' if r.get('conclusion') == 'success' else
+              '❌' if r.get('conclusion') == 'failure' else
+              '⏳'
+              for r in run_list
+          )
+          run_pass = sum(1 for r in run_list if r.get('conclusion') == 'success')
+          run_fail = sum(1 for r in run_list if r.get('conclusion') == 'failure')
+
+          print(f"master_sha={master_sha}")
+          print(f"master_msg={master_msg}")
+          print(f"master_author={master_author}")
+          print(f"master_ago={master_ago}")
+          print(f"pages_sha={pages_sha}")
+          print(f"pages_msg={pages_msg}")
+          print(f"pages_ago={pages_ago}")
+          print(f"deploy_lag={deploy_lag}")
+          print(f"open_prs={open_prs}")
+          print(f"open_issues={open_issues}")
+          print(f"run_dots={run_dots}")
+          print(f"run_pass={run_pass}")
+          print(f"run_fail={run_fail}")
+          PYEOF
+
+      # ── 3. DB sanity (lightweight — just user count) ───────────────────────
+      - name: DB sanity check
+        id: db
         env:
           SUPABASE_URL: https://yxmbammlzweasjvpouqn.supabase.co
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
-          curl -s \
-            "$SUPABASE_URL/rest/v1/profiles?select=id,created_at,status" \
-            -H "apikey: $SUPABASE_SERVICE_KEY" \
-            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
-            > /tmp/profiles.json
-
-          curl -s \
-            "$SUPABASE_URL/rest/v1/time_entries?select=id,user_id,hours,location,created_at" \
-            -H "apikey: $SUPABASE_SERVICE_KEY" \
-            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
-            > /tmp/entries.json
-
-          curl -s \
-            "$SUPABASE_URL/rest/v1/days_off?select=id,user_id,created_at" \
-            -H "apikey: $SUPABASE_SERVICE_KEY" \
-            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
-            > /tmp/daysoff.json
-
           python3 << 'PYEOF' >> $GITHUB_OUTPUT
-          import json
-          from datetime import datetime, timezone, timedelta
+          import json, urllib.request, os, urllib.error
 
-          now = datetime.now(timezone.utc)
-          cut1d  = (now - timedelta(days=1)).isoformat()
-          cut7d  = (now - timedelta(days=7)).isoformat()
-          cut30d = (now - timedelta(days=30)).isoformat()
+          url = os.environ['SUPABASE_URL']
+          key = os.environ['SUPABASE_SERVICE_KEY']
 
-          def load(path):
+          def fetch(table, select='id'):
+              req = urllib.request.Request(
+                  f"{url}/rest/v1/{table}?select={select}",
+                  headers={"apikey": key, "Authorization": f"Bearer {key}"}
+              )
               try:
-                  d = json.load(open(path))
-                  return d if isinstance(d, list) else []
-              except Exception:
-                  return []
+                  with urllib.request.urlopen(req) as r:
+                      d = json.loads(r.read())
+                      return d if isinstance(d, list) else []
+              except Exception as e:
+                  print(f"db_error={e}", flush=True)
+                  return None
 
-          profiles = load('/tmp/profiles.json')
-          entries  = load('/tmp/entries.json')
-          daysoff  = load('/tmp/daysoff.json')
+          profiles = fetch('profiles', 'id,status')
+          entries  = fetch('time_entries', 'id')
+          daysoff  = fetch('days_off', 'id')
 
-          # ── Users ──────────────────────────────────────────────
-          total_users = len(profiles)
-          new_users   = sum(1 for u in profiles if u.get('created_at','') > cut1d)
-          pending     = sum(1 for u in profiles if u.get('status') == 'pending')
+          db_ok = all(x is not None for x in [profiles, entries, daysoff])
+          total_users   = len(profiles) if profiles is not None else 'ERR'
+          pending       = sum(1 for u in (profiles or []) if u.get('status') == 'pending')
+          total_entries = len(entries)  if entries  is not None else 'ERR'
+          total_daysoff = len(daysoff)  if daysoff  is not None else 'ERR'
 
-          # ── Time entries ───────────────────────────────────────
-          total_entries = len(entries)
-          entries_7d    = [e for e in entries if e.get('created_at','') > cut7d]
-          total_hours   = round(sum(e.get('hours') or 0 for e in entries), 1)
-          hours_7d      = round(sum(e.get('hours') or 0 for e in entries_7d), 1)
-          active_7d     = len(set(e['user_id'] for e in entries_7d if e.get('user_id')))
-          home_count    = sum(1 for e in entries if e.get('location') == 'home')
-          office_count  = sum(1 for e in entries if e.get('location') == 'office')
-
-          # ── Days off ───────────────────────────────────────────
-          total_daysoff = len(daysoff)
-          daysoff_30d   = sum(1 for d in daysoff if d.get('created_at','') > cut30d)
-
-          # ── KPIs ───────────────────────────────────────────────
-          punch_rate    = round(active_7d / total_users * 100)   if total_users  else 0
-          avg_hrs_user  = round(hours_7d  / active_7d,     1)    if active_7d    else 0
-          wfh_rate      = round(home_count / total_entries * 100) if total_entries else 0
-          avg_daily_hrs = round(hours_7d / 7, 1)
-
+          print(f"db_ok={db_ok}")
           print(f"total_users={total_users}")
-          print(f"new_users={new_users}")
           print(f"pending={pending}")
           print(f"total_entries={total_entries}")
-          print(f"entries_7d={len(entries_7d)}")
-          print(f"total_hours={total_hours}")
-          print(f"hours_7d={hours_7d}")
-          print(f"active_7d={active_7d}")
-          print(f"home_count={home_count}")
-          print(f"office_count={office_count}")
           print(f"total_daysoff={total_daysoff}")
-          print(f"daysoff_30d={daysoff_30d}")
-          print(f"punch_rate={punch_rate}")
-          print(f"avg_hrs_user={avg_hrs_user}")
-          print(f"wfh_rate={wfh_rate}")
-          print(f"avg_daily_hrs={avg_daily_hrs}")
           PYEOF
 
+      # ── 4. Send email ──────────────────────────────────────────────────────
       - name: Send email summary
         env:
           RESEND_API_KEY:   ${{ secrets.RESEND_API_KEY }}
           APP_OK:           ${{ steps.health.outputs.app_ok }}
           HTTP_STATUS:      ${{ steps.health.outputs.status }}
           RESPONSE_MS:      ${{ steps.health.outputs.response_ms }}
-          TOTAL_USERS:      ${{ steps.stats.outputs.total_users }}
-          NEW_USERS:        ${{ steps.stats.outputs.new_users }}
-          PENDING:          ${{ steps.stats.outputs.pending }}
-          TOTAL_ENTRIES:    ${{ steps.stats.outputs.total_entries }}
-          ENTRIES_7D:       ${{ steps.stats.outputs.entries_7d }}
-          TOTAL_HOURS:      ${{ steps.stats.outputs.total_hours }}
-          HOURS_7D:         ${{ steps.stats.outputs.hours_7d }}
-          ACTIVE_7D:        ${{ steps.stats.outputs.active_7d }}
-          HOME_COUNT:       ${{ steps.stats.outputs.home_count }}
-          OFFICE_COUNT:     ${{ steps.stats.outputs.office_count }}
-          TOTAL_DAYSOFF:    ${{ steps.stats.outputs.total_daysoff }}
-          DAYSOFF_30D:      ${{ steps.stats.outputs.daysoff_30d }}
-          PUNCH_RATE:       ${{ steps.stats.outputs.punch_rate }}
-          AVG_HRS_USER:     ${{ steps.stats.outputs.avg_hrs_user }}
-          WFH_RATE:         ${{ steps.stats.outputs.wfh_rate }}
-          AVG_DAILY_HRS:    ${{ steps.stats.outputs.avg_daily_hrs }}
+          BUNDLE_KB:        ${{ steps.health.outputs.bundle_kb }}
+          ENCODING:         ${{ steps.health.outputs.encoding }}
+          CACHE_CONTROL:    ${{ steps.health.outputs.cache_control }}
+          MASTER_SHA:       ${{ steps.repo.outputs.master_sha }}
+          MASTER_MSG:       ${{ steps.repo.outputs.master_msg }}
+          MASTER_AUTHOR:    ${{ steps.repo.outputs.master_author }}
+          MASTER_AGO:       ${{ steps.repo.outputs.master_ago }}
+          PAGES_SHA:        ${{ steps.repo.outputs.pages_sha }}
+          PAGES_MSG:        ${{ steps.repo.outputs.pages_msg }}
+          PAGES_AGO:        ${{ steps.repo.outputs.pages_ago }}
+          DEPLOY_LAG:       ${{ steps.repo.outputs.deploy_lag }}
+          OPEN_PRS:         ${{ steps.repo.outputs.open_prs }}
+          OPEN_ISSUES:      ${{ steps.repo.outputs.open_issues }}
+          RUN_DOTS:         ${{ steps.repo.outputs.run_dots }}
+          RUN_PASS:         ${{ steps.repo.outputs.run_pass }}
+          RUN_FAIL:         ${{ steps.repo.outputs.run_fail }}
+          DB_OK:            ${{ steps.db.outputs.db_ok }}
+          TOTAL_USERS:      ${{ steps.db.outputs.total_users }}
+          PENDING:          ${{ steps.db.outputs.pending }}
+          TOTAL_ENTRIES:    ${{ steps.db.outputs.total_entries }}
+          TOTAL_DAYSOFF:    ${{ steps.db.outputs.total_daysoff }}
         run: |
           python3 << 'PYEOF'
-          import os, json, urllib.request
+          import os, json
 
           def v(k): return os.environ.get(k, 'N/A')
 
-          app_ok      = v('APP_OK') == 'true'
-          status_text = '✅ LIVE' if app_ok else '🔴 DOWN'
-          hdr_color   = '#0f766e' if app_ok else '#dc2626'
-          today       = __import__('datetime').date.today().strftime('%d/%m/%Y')
+          app_ok    = v('APP_OK') == 'true'
+          db_ok     = v('DB_OK') == 'True'
+          today     = __import__('datetime').date.today().strftime('%d/%m/%Y')
 
-          pending     = v('PENDING')
-          pending_cell = (
-              f'<span style="background:#fee2e2;color:#dc2626;padding:1px 8px;'
-              f'border-radius:10px;font-size:12px;font-weight:700">{pending} ממתינים</span>'
-              if pending not in ('0', 'N/A') else pending
+          hdr_color = '#0f766e' if app_ok else '#dc2626'
+          app_badge = '✅ LIVE' if app_ok else '🔴 DOWN'
+          db_badge  = '✅ OK'   if db_ok  else '🔴 ERR'
+
+          pending = v('PENDING')
+          pending_badge = (
+              f'<span style="background:#fee2e2;color:#dc2626;padding:1px 7px;'
+              f'border-radius:8px;font-weight:700">{pending}</span>'
+              if pending not in ('0','N/A') else pending
           )
 
-          def kpi(val, label, color):
+          deploy_synced = v('DEPLOY_LAG') == 'up to date'
+          deploy_color  = '#16a34a' if deploy_synced else '#d97706'
+          deploy_text   = '✅ in sync' if deploy_synced else f'⚠️ {v("DEPLOY_LAG")}'
+
+          run_fail = v('RUN_FAIL')
+          ci_color = '#16a34a' if run_fail == '0' else '#d97706'
+
+          def kpi(val, label, color, sub=''):
+              sub_html = f'<div style="font-size:10px;color:#a8a29e;margin-top:2px">{sub}</div>' if sub else ''
               return (
                   f'<td style="width:25%;padding:0 4px">'
-                  f'<div style="background:#fff;border-radius:10px;padding:14px 8px;text-align:center;'
+                  f'<div style="background:#fff;border-radius:10px;padding:12px 8px;text-align:center;'
                   f'box-shadow:0 1px 3px rgba(0,0,0,.07)">'
-                  f'<div style="font-size:20px;font-weight:700;color:{color}">{val}</div>'
+                  f'<div style="font-size:18px;font-weight:700;color:{color};line-height:1.1">{val}</div>'
                   f'<div style="font-size:11px;color:#78716c;margin-top:4px;line-height:1.3">{label}</div>'
-                  f'</div></td>'
+                  f'{sub_html}</div></td>'
               )
 
-          def stat_row(label, val, highlight=False):
-              val_style = 'font-weight:600;' + ('color:#0f766e;' if highlight else '')
-              return (
+          def card(title, rows):
+              rows_html = ''.join(
                   f'<tr>'
-                  f'<td style="padding:6px 0;color:#78716c;font-size:13px;border-bottom:1px solid #f5f5f4">{label}</td>'
-                  f'<td style="padding:6px 0;text-align:left;{val_style}font-size:13px;border-bottom:1px solid #f5f5f4">{val}</td>'
+                  f'<td style="padding:6px 0;color:#78716c;font-size:13px;border-bottom:1px solid #f5f5f4">{r[0]}</td>'
+                  f'<td style="padding:6px 0;text-align:left;font-size:13px;font-weight:600;'
+                  f'{"color:#0f766e;" if len(r)>2 and r[2] else ""}border-bottom:1px solid #f5f5f4">{r[1]}</td>'
                   f'</tr>'
+                  for r in rows
+              )
+              return (
+                  f'<div style="background:#fff;border-radius:10px;padding:18px;'
+                  f'box-shadow:0 1px 3px rgba(0,0,0,.07);height:100%">'
+                  f'<div style="font-size:11px;font-weight:700;color:#78716c;'
+                  f'text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">{title}</div>'
+                  f'<table width="100%" style="border-collapse:collapse">{rows_html}</table>'
+                  f'</div>'
               )
 
           html = f"""
           <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Heebo,sans-serif;
-                      max-width:560px;margin:0 auto;background:#f5f5f4;
-                      padding:20px;direction:rtl;color:#1c1917">
+                      max-width:580px;margin:0 auto;background:#f5f5f4;padding:20px;color:#1c1917">
 
             <!-- Header -->
             <table width="100%" style="background:{hdr_color};border-radius:14px;
                    margin-bottom:14px;border-collapse:collapse">
-              <tr>
-                <td style="padding:22px 24px">
-                  <div style="font-size:11px;color:rgba(255,255,255,.7);
-                              letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px">QA יומי · {today}</div>
-                  <div style="font-size:22px;font-weight:700;color:#fff">⏱ Timekeeper</div>
-                  <div style="margin-top:14px;background:rgba(255,255,255,.18);border-radius:8px;
-                              padding:10px 14px;color:#fff;font-size:14px;font-weight:600">
-                    {status_text} &nbsp;·&nbsp; HTTP {v('HTTP_STATUS')} &nbsp;·&nbsp; {v('RESPONSE_MS')} ms
-                  </div>
-                </td>
-              </tr>
+              <tr><td style="padding:20px 24px">
+                <div style="font-size:11px;color:rgba(255,255,255,.65);letter-spacing:.5px;
+                            text-transform:uppercase;margin-bottom:3px">Dev QA · {today}</div>
+                <div style="font-size:22px;font-weight:700;color:#fff">⏱ Timekeeper</div>
+                <table style="margin-top:12px;border-collapse:collapse">
+                  <tr>
+                    <td style="background:rgba(255,255,255,.18);border-radius:7px;
+                               padding:7px 12px;color:#fff;font-size:13px;font-weight:600;margin-left:8px">
+                      {app_badge} &nbsp;{v('HTTP_STATUS')} · {v('RESPONSE_MS')}ms
+                    </td>
+                    <td style="width:10px"></td>
+                    <td style="background:rgba(255,255,255,.18);border-radius:7px;
+                               padding:7px 12px;color:#fff;font-size:13px;font-weight:600">
+                      🗄️ DB {db_badge}
+                    </td>
+                  </tr>
+                </table>
+              </td></tr>
             </table>
 
             <!-- KPI row -->
             <table width="100%" style="border-collapse:collapse;margin-bottom:14px">
               <tr>
-                {kpi(f"{v('PUNCH_RATE')}%",  "פעילות צוות (7י)",     "#0f766e")}
-                {kpi(f"{v('AVG_HRS_USER')}h", "ממוצע שעות/משתמש (7י)", "#2563eb")}
-                {kpi(f"{v('AVG_DAILY_HRS')}h","ממוצע שעות יומי (7י)",  "#d97706")}
-                {kpi(f"{v('WFH_RATE')}%",     "עבודה מהבית",            "#7c3aed")}
+                {kpi(f"{v('BUNDLE_KB')} KB", "Bundle size", "#1c1917", v('ENCODING'))}
+                {kpi(f"{v('RESPONSE_MS')}ms", "Response time", "#2563eb")}
+                {kpi(f"{v('RUN_PASS')}/{int(v('RUN_PASS') or 0)+int(v('RUN_FAIL') or 0)}", "CI pass rate", ci_color, "last 10 runs")}
+                {kpi(f"{v('TOTAL_USERS')}", "DB users", "#7c3aed", f"{pending_badge} pending" if pending not in ('0','N/A') else "")}
               </tr>
             </table>
 
-            <!-- Users + Entries -->
+            <!-- Deployment + Repo -->
             <table width="100%" style="border-collapse:collapse;margin-bottom:14px">
               <tr>
-                <!-- Users card -->
                 <td width="49%" style="vertical-align:top;padding-left:7px">
-                  <div style="background:#fff;border-radius:10px;padding:18px;
-                              box-shadow:0 1px 3px rgba(0,0,0,.07)">
-                    <div style="font-size:11px;font-weight:700;color:#78716c;
-                                text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">
-                      👥 משתמשים
-                    </div>
-                    <table width="100%" style="border-collapse:collapse">
-                      {stat_row('סה"כ', v('TOTAL_USERS'))}
-                      {stat_row('חדשים (24ש)', v('NEW_USERS'), highlight=True)}
-                      {stat_row('פעילים (7י)', v('ACTIVE_7D'))}
-                      {stat_row('ממתינים לאישור', pending_cell)}
-                    </table>
-                  </div>
+                  {card("🚀 Deployment", [
+                      ("Live SHA", f'<code style="font-size:12px;background:#f5f5f4;padding:1px 5px;border-radius:4px">{v("PAGES_SHA")}</code>', False),
+                      ("Live commit", v("PAGES_MSG"), False),
+                      ("Deployed", v("PAGES_AGO"), False),
+                      ("Sync status", f'<span style="color:{deploy_color};font-weight:700">{deploy_text}</span>', False),
+                  ])}
                 </td>
-                <!-- Entries card -->
                 <td width="49%" style="vertical-align:top;padding-right:7px">
-                  <div style="background:#fff;border-radius:10px;padding:18px;
-                              box-shadow:0 1px 3px rgba(0,0,0,.07)">
-                    <div style="font-size:11px;font-weight:700;color:#78716c;
-                                text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">
-                      ⏱ שעות עבודה
-                    </div>
-                    <table width="100%" style="border-collapse:collapse">
-                      {stat_row('סה"כ רשומות', v('TOTAL_ENTRIES'))}
-                      {stat_row('רשומות (7י)', v('ENTRIES_7D'), highlight=True)}
-                      {stat_row('סה"כ שעות', v('TOTAL_HOURS'))}
-                      {stat_row('שעות (7י)', v('HOURS_7D'), highlight=True)}
-                    </table>
-                  </div>
+                  {card("📦 Master branch", [
+                      ("Last commit", f'<code style="font-size:12px;background:#f5f5f4;padding:1px 5px;border-radius:4px">{v("MASTER_SHA")}</code>', False),
+                      ("Message", v("MASTER_MSG"), False),
+                      ("Author", v("MASTER_AUTHOR"), False),
+                      ("Pushed", v("MASTER_AGO"), False),
+                  ])}
                 </td>
               </tr>
             </table>
 
-            <!-- Location + Days Off -->
+            <!-- CI + Repo health -->
             <table width="100%" style="border-collapse:collapse;margin-bottom:14px">
               <tr>
-                <!-- Location card -->
                 <td width="49%" style="vertical-align:top;padding-left:7px">
-                  <div style="background:#fff;border-radius:10px;padding:18px;
-                              box-shadow:0 1px 3px rgba(0,0,0,.07)">
-                    <div style="font-size:11px;font-weight:700;color:#78716c;
-                                text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">
-                      📍 מיקום
-                    </div>
-                    <table width="100%" style="border-collapse:collapse">
-                      {stat_row('🏢 מהמשרד', v('OFFICE_COUNT'))}
-                      {stat_row('🏠 מהבית',  v('HOME_COUNT'))}
-                    </table>
-                  </div>
+                  {card("⚙️ CI health (last 10)", [
+                      ("Run history", v("RUN_DOTS"), False),
+                      ("Passed", v("RUN_PASS"), True),
+                      ("Failed", v("RUN_FAIL"), False),
+                  ])}
                 </td>
-                <!-- Days Off card -->
                 <td width="49%" style="vertical-align:top;padding-right:7px">
-                  <div style="background:#fff;border-radius:10px;padding:18px;
-                              box-shadow:0 1px 3px rgba(0,0,0,.07)">
-                    <div style="font-size:11px;font-weight:700;color:#78716c;
-                                text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">
-                      🌴 ימי חופש
-                    </div>
-                    <table width="100%" style="border-collapse:collapse">
-                      {stat_row('סה"כ', v('TOTAL_DAYSOFF'))}
-                      {stat_row('ב-30 יום האחרונים', v('DAYSOFF_30D'), highlight=True)}
-                    </table>
-                  </div>
+                  {card("🗄️ Database", [
+                      ("Users", v("TOTAL_USERS"), False),
+                      ("Pending approval", pending_badge, False),
+                      ("Time entries", v("TOTAL_ENTRIES"), False),
+                      ("Days-off records", v("TOTAL_DAYSOFF"), False),
+                  ])}
                 </td>
               </tr>
+            </table>
+
+            <!-- HTTP details -->
+            <table width="100%" style="border-collapse:collapse;margin-bottom:14px">
+              <tr><td>
+                {card("🌐 HTTP details", [
+                    ("Status", f'{v("HTTP_STATUS")} · {v("RESPONSE_MS")} ms', False),
+                    ("Bundle size", f'{v("BUNDLE_KB")} KB', False),
+                    ("Content-Encoding", v("ENCODING"), False),
+                    ("Cache-Control", v("CACHE_CONTROL"), False),
+                ])}
+              </td></tr>
             </table>
 
             <!-- Footer -->
             <table width="100%" style="border-collapse:collapse">
-              <tr>
-                <td style="text-align:center;padding:12px;font-size:12px;color:#a8a29e">
-                  <a href="https://alonktz.github.io/TimeManagmentApp/"
-                     style="color:#0f766e;text-decoration:none;font-weight:600">
-                    פתח את Timekeeper ↗
-                  </a>
-                  &nbsp;·&nbsp; QA Bot
-                </td>
-              </tr>
+              <tr><td style="text-align:center;padding:12px;font-size:12px;color:#a8a29e">
+                <a href="https://alonktz.github.io/TimeManagmentApp/"
+                   style="color:#0f766e;text-decoration:none;font-weight:600">Open Timekeeper ↗</a>
+                &nbsp;·&nbsp;
+                <a href="https://github.com/AlonKtz/TimeManagmentApp/actions"
+                   style="color:#78716c;text-decoration:none">GitHub Actions ↗</a>
+                &nbsp;·&nbsp; QA Bot
+              </td></tr>
             </table>
 
           </div>
           """
 
           subject = (
-              f"[{'OK' if app_ok else 'DOWN'}] Timekeeper {today} — "
-              f"{v('ACTIVE_7D')} פעילים · {v('HOURS_7D')}h · "
-              f"פעילות {v('PUNCH_RATE')}%"
+              f"[{'OK' if app_ok else 'DOWN'}] Timekeeper Dev QA {today} — "
+              f"{v('BUNDLE_KB')}KB · {v('RESPONSE_MS')}ms · "
+              f"CI {v('RUN_PASS')}/{int(v('RUN_PASS') or 0)+int(v('RUN_FAIL') or 0)}"
           )
 
           payload = json.dumps({
@@ -295,11 +380,9 @@ jobs:
               "to":   ["alonkatz135@gmail.com"],
               "subject": subject,
               "html": html,
-          }).encode()
-
-          # Write payload to file so curl can send it (urllib blocked by Cloudflare WAF)
+          })
           with open('/tmp/email_payload.json', 'w') as f:
-              f.write(payload.decode())
+              f.write(payload)
           PYEOF
 
           curl -s -X POST https://api.resend.com/emails \
