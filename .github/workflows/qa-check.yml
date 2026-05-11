@@ -305,6 +305,11 @@ jobs:
                   "Content-Type":  "application/json",
               },
           )
-          with urllib.request.urlopen(req) as resp:
-              print(resp.read().decode())
+          try:
+              with urllib.request.urlopen(req) as resp:
+                  print(resp.read().decode())
+          except urllib.error.HTTPError as e:
+              print(f"Resend error {e.code}: {e.reason}")
+              print(e.read().decode())
+              raise
           PYEOF
