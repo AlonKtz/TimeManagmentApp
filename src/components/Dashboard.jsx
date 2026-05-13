@@ -27,7 +27,7 @@ export default function Dashboard({ user, entries, settings, setSettings, active
   }, [activePunch]);
 
   const today = new Date();
-  const todayTarget = getPersonalDailyTarget(today, settings, jobPercent, userDaysOff);
+  const todayTarget = getPersonalDailyTarget(today, settings, jobPercent);
   const todayWorked = getWorkedOnDate(entries, today);
   const liveAdd = activePunch ? sessionDuration({ start: activePunch.start }) : 0;
   const todayTotal = todayWorked + liveAdd;
@@ -36,13 +36,13 @@ export default function Dashboard({ user, entries, settings, setSettings, active
   displayedBase.setDate(displayedBase.getDate() + weekOffset * 7);
   const weekStart = startOfWeek(displayedBase);
   const weekEnd = endOfWeek(displayedBase);
-  const weekStats = getPersonalRangeStats(entries, settings, weekStart, weekEnd, jobPercent, userDaysOff);
+  const weekStats = getPersonalRangeStats(entries, settings, weekStart, weekEnd, jobPercent);
   const isCurrentWeek = weekOffset === 0;
   const weekTotal = weekStats.worked + (isCurrentWeek ? liveAdd : 0);
 
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
   const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-  const monthStats = getPersonalRangeStats(entries, settings, monthStart, monthEnd, jobPercent, userDaysOff);
+  const monthStats = getPersonalRangeStats(entries, settings, monthStart, monthEnd, jobPercent);
   const monthTotal = monthStats.worked + liveAdd;
 
   const todayPct = todayTarget > 0 ? (todayTotal / todayTarget) * 100 : (todayTotal > 0 ? 100 : 0);
@@ -223,7 +223,7 @@ export default function Dashboard({ user, entries, settings, setSettings, active
             </thead>
             <tbody>
               {daysInRange(weekStart, weekEnd).map(d => {
-                const target = getPersonalDailyTarget(d, settings, jobPercent, userDaysOff);
+                const target = getPersonalDailyTarget(d, settings, jobPercent);
                 const isToday = ymd(d) === ymd(today);
                 const worked = getWorkedOnDate(entries, d) + (isToday ? liveAdd : 0);
                 const diff = worked - target;

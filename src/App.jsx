@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { DEFAULT_SETTINGS, DEFAULT_LOCATION } from './constants';
 import { ymd, fmtTime24, diffHours } from './utils/date';
 import { loadPunch, savePunch } from './utils/storage';
+import { getPersonalDailyTarget } from './utils/business';
 import sb from './lib/supabase';
 import { useAuth } from './hooks/useAuth';
 import LoginScreen from './components/LoginScreen';
@@ -36,9 +37,17 @@ export default function App() {
   const [entries, setEntriesState] = useState([]);
   const [settings, setSettingsState] = useState(DEFAULT_SETTINGS);
   const [activePunch, setActivePunchState] = useState(null);
-  // daysOff kept as { [userId]: ['YYYY-MM-DD', ...] } for compat with DaysOff + QuarterlyView
+  // daysOff kept as { [userId]: ['YYYY-MM-DD', ...] } for compat with DaysOff + Dashboard display
   const [daysOff, setDaysOffState] = useState({});
   const [dataLoaded, setDataLoaded] = useState(false);
+
+  // Refs to avoid stale closures inside async callbacks
+  const entriesRef  = useRef([]);
+  const daysOffRef  = useRef({});
+  const settingsRef = useRef(DEFAULT_SETTINGS);
+  useEffect(() => { entriesRef.current  = entries;  }, [entries]);
+  useEffect(() => { daysOffRef.current  = daysOff;  }, [daysOff]);
+  useEffect(() => { settingsRef.current = settings; }, [settings]);
 
   const user = auth.currentUser;
 
@@ -296,16 +305,23 @@ export default function App() {
   };
 
   // ── Days Off save ────────────────────────────────────────────────────────
+  // A day off = a permanent time entry for the full standard hours of that day.
+  // The days_off table is used for display/reference; the entry provides the hours.
   const setDaysOff = async (nextMap) => {
     if (!user) return;
-    setDaysOffState(nextMap);
+
+    // Use refs to avoid stale closure
+    const prevDates = daysOffRef.current[user.id] || [];
     const nextDates = nextMap[user.id] || [];
-    const prevDates = daysOff[user.id] || [];
 
     const toAdd    = nextDates.filter((d) => !prevDates.includes(d));
     const toRemove = prevDates.filter((d) => !nextDates.includes(d));
 
+    setDaysOffState(nextMap); // optimistic UI
+
+    // ── Add new days off ──────────────────────────────────────────────────
     for (const date of toAdd) {
+      // 1. Persist to days_off table (plain INSERT — no composite unique constraint needed)
       try {
         await fetch(`${sb._url}/rest/v1/days_off`, {
           method: 'POST',
@@ -313,20 +329,50 @@ export default function App() {
           body: JSON.stringify({ user_id: user.id, date }),
         });
       } catch (e) {
-        console.error('[app] add day off:', e);
+        console.error('[app] add day off row:', e);
+      }
+
+      // 2. Auto-create a time entry for the standard hours of that day
+      const d = new Date(date + 'T12:00:00'); // noon to avoid DST edge cases
+      const dayHours = getPersonalDailyTarget(d, settingsRef.current, user.jobPercent ?? 100);
+      if (dayHours > 0) {
+        const newEntry = {
+          id: 'dayoff_' + date + '_' + user.id.slice(0, 6),
+          date,
+          hours: dayHours,
+          start: null,
+          end: null,
+          note: 'יום חופש',
+          mode: 'dayoff',
+          location: DEFAULT_LOCATION,
+          viaPunch: false,
+          createdAt: new Date().toISOString(),
+        };
+        const currentEntries = entriesRef.current;
+        // Only add if no dayoff entry for this date already exists
+        if (!currentEntries.some((e) => e.date === date && e.mode === 'dayoff')) {
+          await saveEntries([...currentEntries, newEntry]);
+        }
       }
     }
-    if (toRemove.length) {
-      for (const date of toRemove) {
-        try {
-          const r = await fetch(
-            `${sb._url}/rest/v1/days_off?user_id=eq.${encodeURIComponent(user.id)}&date=eq.${encodeURIComponent(date)}`,
-            { method: 'DELETE', headers: sb.headers() }
-          );
-          if (!r.ok) console.error('[app] remove day off HTTP', r.status);
-        } catch (e) {
-          console.error('[app] remove day off:', e);
-        }
+
+    // ── Remove days off ───────────────────────────────────────────────────
+    for (const date of toRemove) {
+      // 1. Delete from days_off table
+      try {
+        await fetch(
+          `${sb._url}/rest/v1/days_off?user_id=eq.${encodeURIComponent(user.id)}&date=eq.${encodeURIComponent(date)}`,
+          { method: 'DELETE', headers: sb.headers() }
+        );
+      } catch (e) {
+        console.error('[app] remove day off row:', e);
+      }
+
+      // 2. Delete the corresponding dayoff entry
+      const currentEntries = entriesRef.current;
+      const nextEntries = currentEntries.filter((e) => !(e.date === date && e.mode === 'dayoff'));
+      if (nextEntries.length !== currentEntries.length) {
+        await saveEntries(nextEntries);
       }
     }
   };
@@ -455,7 +501,6 @@ export default function App() {
           entries={entriesByUser}
           setEntries={setEntries}
           settings={settings}
-          daysOff={userDaysOff}
         />
       )}
       {tab === 'daysoff' && (

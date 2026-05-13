@@ -29,11 +29,9 @@ function ProgressBar({ pct }) {
 export default function QuarterlyView({ user, entries, settings, daysOff }) {
   const year = new Date().getFullYear();
   const jobPercent = user.jobPercent ?? 100;
-  const userDaysOff = daysOff?.[user.id] || [];
-
   const rows = QUARTERS.map(q => {
     const { from, to } = getQuarterDates(year, q);
-    const stats = getPersonalRangeStats(entries, settings, from, to, jobPercent, userDaysOff);
+    const stats = getPersonalRangeStats(entries, settings, from, to, jobPercent);
     const pct = stats.target > 0 ? (stats.worked / stats.target) * 100 : (stats.worked > 0 ? 100 : 0);
     return { ...q, ...stats, pct, from, to };
   });

@@ -102,8 +102,7 @@ export default function EntriesTab({ user, entries, setEntries, settings, daysOf
     .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
 
   const jobPercent = user.jobPercent ?? 100;
-  const userDaysOff = daysOff || [];
-  const monthStats = getPersonalRangeStats(userEntries, settings, viewStart, viewEnd, jobPercent, userDaysOff);
+  const monthStats = getPersonalRangeStats(userEntries, settings, viewStart, viewEnd, jobPercent);
 
   return (
     <div>
@@ -225,23 +224,30 @@ export default function EntriesTab({ user, entries, setEntries, settings, daysOf
               <tbody>
                 {monthEntries.map(e => {
                   const d = parseYmd(e.date);
+                  const isDayOff = e.mode === 'dayoff';
                   return (
-                    <tr key={e.id}>
+                    <tr key={e.id} style={isDayOff ? { background: 'var(--surface-2)' } : {}}>
                       <td>{d.getDate()}.{d.getMonth() + 1}.{d.getFullYear()}</td>
                       <td>{HEB_DAYS[d.getDay()]}</td>
                       <td style={{ fontWeight: 600 }}>{fmtHours(e.hours)}</td>
                       <td style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-                        {e.mode === 'range' && e.start && e.end ? `${e.start} – ${e.end}` : 'שעות ידני'}
+                        {isDayOff
+                          ? <span className="pill pill-muted">יום חופש</span>
+                          : e.mode === 'range' && e.start && e.end
+                            ? `${e.start} – ${e.end}`
+                            : e.viaPunch ? 'punch' : 'שעות ידני'}
                       </td>
-                      <td><LocationPill loc={e.location || DEFAULT_LOCATION} /></td>
+                      <td>{isDayOff ? '—' : <LocationPill loc={e.location || DEFAULT_LOCATION} />}</td>
                       <td style={{ color: 'var(--text-muted)', fontSize: 13, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {e.note || '—'}
                       </td>
                       <td>
                         <div className="actions-inline">
-                          <button className="icon-btn" onClick={() => editEntry(e)} title="עריכה">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                          </button>
+                          {!isDayOff && (
+                            <button className="icon-btn" onClick={() => editEntry(e)} title="עריכה">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                          )}
                           <button className="icon-btn danger" onClick={() => deleteEntry(e.id)} title="מחיקה">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                           </button>

@@ -45,10 +45,8 @@ export function getDailyTarget(date, settings) {
  *  • Holidays / overrides → always scaled by (pct/100), rounded to ¼h.
  *  • Fri/Sat → always 0.
  */
-export function getPersonalDailyTarget(date, settings, jobPercent = 100, daysOff = []) {
-  // If this date is a day off for the user, target is 0
-  if (daysOff.includes(ymd(date))) return 0;
-
+export function getPersonalDailyTarget(date, settings, jobPercent = 100) {
+  // Days off are handled by auto-creating a time entry — target is unchanged.
   const pct = (jobPercent ?? 100) / 100;
   const dow = date.getDay();
 
@@ -87,12 +85,12 @@ export function getRangeStats(entries, settings, from, to) {
   return { target, worked, diff: worked - target };
 }
 
-/** Like getRangeStats but uses getPersonalDailyTarget for the user's job percent and days off. */
-export function getPersonalRangeStats(entries, settings, from, to, jobPercent = 100, daysOff = []) {
+/** Like getRangeStats but uses getPersonalDailyTarget for the user's job percent. */
+export function getPersonalRangeStats(entries, settings, from, to, jobPercent = 100) {
   const days = daysInRange(from, to);
   let target = 0, worked = 0;
   for (const d of days) {
-    target += getPersonalDailyTarget(d, settings, jobPercent, daysOff);
+    target += getPersonalDailyTarget(d, settings, jobPercent);
     worked += getWorkedOnDate(entries, d);
   }
   return { target, worked, diff: worked - target };
