@@ -224,7 +224,7 @@ export default function EntriesTab({ user, entries, setEntries, settings, daysOf
               <tbody>
                 {monthEntries.map(e => {
                   const d = parseYmd(e.date);
-                  const isDayOff = e.mode === 'dayoff';
+                  const isDayOff = e.mode === 'dayoff' || e.note === 'יום חופש' || (e.id && e.id.startsWith('dayoff_'));
                   return (
                     <tr key={e.id} style={isDayOff ? { background: 'var(--surface-2)' } : {}}>
                       <td>{d.getDate()}.{d.getMonth() + 1}.{d.getFullYear()}</td>

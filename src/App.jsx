@@ -13,6 +13,14 @@ import AccountSettings from './components/AccountSettings';
 import DaysOff from './components/DaysOff';
 import QuarterlyView from './components/QuarterlyView';
 
+// Marker note used to identify a vacation-day entry.
+// Use a literal Hebrew prefix that survives any DB CHECK constraint on `mode`.
+const DAYOFF_NOTE = 'יום חופש';
+
+function isDayOffEntry(e) {
+  return e.mode === 'dayoff' || e.note === DAYOFF_NOTE || (e.id && e.id.startsWith('dayoff_'));
+}
+
 // Convert DB time_entries row → app entry format
 function normalizeEntry(r) {
   return {
@@ -153,9 +161,9 @@ export default function App() {
       );
       const normalized = rows.map(normalizeEntry);
       setEntriesState(normalized);
-      // Derive days-off list from dayoff entries — no days_off table needed
+      // Derive days-off list — entries marked by note OR mode (back-compat)
       const dayoffDates = normalized
-        .filter((e) => e.mode === 'dayoff')
+        .filter((e) => isDayOffEntry(e))
         .map((e) => e.date);
       setDaysOffState({ [user.id]: dayoffDates });
     } catch (e) {
@@ -258,7 +266,28 @@ export default function App() {
           'id'
         );
       } catch (err) {
-        console.error('[app] upsert entry:', err);
+        // First fall-back: retry without the `mode` field (some schemas reject custom modes)
+        console.warn('[app] upsert with mode failed, retrying without mode:', err?.message);
+        try {
+          await sb.upsert(
+            'time_entries',
+            {
+              id: e.id,
+              user_id: user.id,
+              date: e.date,
+              hours: e.hours,
+              start_time: e.start || null,
+              end_time: e.end || null,
+              note: e.note || '',
+              location: e.location || DEFAULT_LOCATION,
+              via_punch: e.viaPunch || false,
+              created_at: e.createdAt || new Date().toISOString(),
+            },
+            'id'
+          );
+        } catch (err2) {
+          console.error('[app] upsert entry FAILED entirely:', err2);
+        }
       }
     }
   };
@@ -320,15 +349,15 @@ export default function App() {
       const dayHours = getPersonalDailyTarget(d, settingsRef.current, user.jobPercent ?? 100);
       const entryId = 'dayoff_' + date + '_' + user.id.slice(0, 6);
       const currentEntries = entriesRef.current;
-      if (!currentEntries.some((e) => e.date === date && e.mode === 'dayoff')) {
+      if (!currentEntries.some((e) => e.date === date && isDayOffEntry(e))) {
         const newEntry = {
           id: entryId,
           date,
           hours: dayHours,
           start: null,
           end: null,
-          note: 'יום חופש',
-          mode: 'dayoff',
+          note: DAYOFF_NOTE,        // marker — survives any DB constraint
+          mode: 'hours',            // valid mode value (avoids CHECK constraint)
           location: DEFAULT_LOCATION,
           viaPunch: false,
           createdAt: new Date().toISOString(),
@@ -340,7 +369,7 @@ export default function App() {
     // ── Remove ────────────────────────────────────────────────────────────
     for (const date of toRemove) {
       const currentEntries = entriesRef.current;
-      const nextEntries = currentEntries.filter((e) => !(e.date === date && e.mode === 'dayoff'));
+      const nextEntries = currentEntries.filter((e) => !(e.date === date && isDayOffEntry(e)));
       if (nextEntries.length !== currentEntries.length) {
         await saveEntries(nextEntries);
       }
