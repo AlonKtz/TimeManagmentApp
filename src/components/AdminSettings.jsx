@@ -9,8 +9,23 @@ export default function AdminSettings({ settings, setSettings, users, currentUse
   const [overrideDate, setOverrideDate]   = useState(ymd(new Date()));
   const [overrideHours, setOverrideHours] = useState('0');
   const [overrideNote, setOverrideNote]   = useState('');
+  const [overrideType, setOverrideType]   = useState('vacation'); // vacation | half | short | custom
   const [flash, setFlash]                 = useState('');
   const [holidayFilter, setHolidayFilter] = useState('upcoming');
+
+  // Quick-presets for company days. Picking one prefills hours + a sensible note.
+  const TYPE_PRESETS = [
+    { id: 'vacation', label: '🌴 חופשה (יום מלא)', hours: 0, note: 'חופשת חברה' },
+    { id: 'half',     label: '🌗 חצי יום (5 ש׳)',  hours: 5, note: 'חצי יום' },
+    { id: 'short',    label: '⏱ יום מקוצר (6 ש׳)', hours: 6, note: 'יום מקוצר' },
+    { id: 'custom',   label: '✎ מותאם אישית',      hours: null, note: '' },
+  ];
+  const applyTypePreset = (id) => {
+    setOverrideType(id);
+    const p = TYPE_PRESETS.find((x) => x.id === id);
+    if (p && p.hours !== null) setOverrideHours(String(p.hours));
+    if (p && p.note) setOverrideNote(p.note);
+  };
 
   useEffect(() => setSh(settings.standardHours), [settings.standardHours]);
   useEffect(() => setHh(settings.holidayHours || DEFAULT_SETTINGS.holidayHours), [settings.holidayHours]);
@@ -90,6 +105,33 @@ export default function AdminSettings({ settings, setSettings, users, currentUse
         </div>
       )}
 
+      {/* ===== Global-scope notice ===== */}
+      <div
+        className="card2"
+        style={{
+          marginBottom: 16,
+          background: 'color-mix(in oklab, var(--info-soft) 60%, var(--surface))',
+          borderColor: 'color-mix(in oklab, var(--info) 25%, var(--border))',
+        }}
+      >
+        <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 10,
+            background: 'var(--info)', color: 'white',
+            display: 'grid', placeItems: 'center', flex: '0 0 auto',
+            fontSize: 18,
+          }}>🌍</div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--info)' }}>
+              הגדרות כלל-חברתיות
+            </div>
+            <div style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 2 }}>
+              כל ההגדרות בעמוד זה (תקן שעות, שעות חגים, ימי חופש וחריגות) משפיעות מיידית על כל המשתמשים במערכת.
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* ===== Pending users ===== */}
       {pendingUsers.length > 0 && (
         <div className="card2" style={{ marginBottom: 16, borderColor: 'color-mix(in oklab, var(--warning) 30%, var(--border))' }}>
@@ -121,7 +163,10 @@ export default function AdminSettings({ settings, setSettings, users, currentUse
 
       {/* ===== Weekly hours standard ===== */}
       <div className="card2" style={{ marginBottom: 16 }}>
-        <div className="card2-title"><h3>תקן שעות שבועי</h3></div>
+        <div className="card2-title">
+          <h3>תקן שעות שבועי</h3>
+          <span className="pill2 info">משפיע על כולם</span>
+        </div>
         <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
           קבע את מספר שעות העבודה הסטנדרטי לכל יום בשבוע. שישי ושבת אינם ימי עבודה.
         </div>
@@ -147,7 +192,10 @@ export default function AdminSettings({ settings, setSettings, users, currentUse
 
       {/* ===== Holiday hours ===== */}
       <div className="card2" style={{ marginBottom: 16 }}>
-        <div className="card2-title"><h3>שעות לפי סוג חג</h3></div>
+        <div className="card2-title">
+          <h3>שעות לפי סוג חג</h3>
+          <span className="pill2 info">משפיע על כולם</span>
+        </div>
         <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
           הגדרות אלו חלות אוטומטית על כל חגי ישראל הרלוונטיים.
         </div>
@@ -176,6 +224,7 @@ export default function AdminSettings({ settings, setSettings, users, currentUse
         <div className="card2-title">
           <h3>לוח חגי ישראל</h3>
           <div className="row" style={{ gap: 6 }}>
+            <span className="pill2 info" style={{ marginInlineEnd: 4 }}>משפיע על כולם</span>
             <button
               className={`btn2 ${holidayFilter === 'upcoming' ? 'primary' : 'ghost'}`}
               onClick={() => setHolidayFilter('upcoming')}
@@ -233,13 +282,49 @@ export default function AdminSettings({ settings, setSettings, users, currentUse
         )}
       </div>
 
-      {/* ===== Custom overrides ===== */}
+      {/* ===== Company vacations / overrides ===== */}
       <div className="card2" style={{ marginBottom: 16 }}>
-        <div className="card2-title"><h3>חריגות מותאמות אישית</h3></div>
-        <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
-          לתאריכים שאינם חגים רשמיים — יום עבודה מקוצר, אירוע חברה, חופשה מרוכזת וכו'.
+        <div className="card2-title">
+          <h3>🌴 חופשות חברה וחריגות</h3>
+          <span className="pill2 info">משפיע על כולם</span>
         </div>
+        <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+          הוסף ימי חופשה, ימים מקוצרים או חריגות לתאריכים שאינם חגי ישראל הרשמיים.
+          ההגדרה תחול אוטומטית על כל העובדים — היעד היומי שלהם לאותו תאריך יתעדכן.
+        </div>
+
         <form onSubmit={addOverride}>
+          {/* Quick-pick type chips */}
+          <div className="field" style={{ marginBottom: 14 }}>
+            <label className="field-label">סוג</label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {TYPE_PRESETS.map((p) => {
+                const isActive = overrideType === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => applyTypePreset(p.id)}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: 999,
+                      border: `1.5px solid ${isActive ? 'var(--primary)' : 'var(--border-strong)'}`,
+                      background: isActive ? 'var(--primary-soft)' : 'var(--surface)',
+                      color: isActive ? 'var(--primary)' : 'var(--text)',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                      minHeight: 38,
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="form-row2">
             <div className="field">
               <label className="field-label">תאריך</label>
@@ -247,16 +332,29 @@ export default function AdminSettings({ settings, setSettings, users, currentUse
             </div>
             <div className="field">
               <label className="field-label">שעות ליום זה</label>
-              <input type="number" step="0.25" min="0" max="24" value={overrideHours} onChange={(e) => setOverrideHours(e.target.value)} required />
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>הזן 0 ליום חופש מלא</div>
+              <input
+                type="number" step="0.25" min="0" max="24"
+                value={overrideHours}
+                onChange={(e) => { setOverrideHours(e.target.value); setOverrideType('custom'); }}
+                required
+              />
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                0 = יום חופש מלא. אחרת = שעות התקן לאותו יום.
+              </div>
             </div>
             <div className="field">
               <label className="field-label">תיאור</label>
-              <input type="text" value={overrideNote} onChange={(e) => setOverrideNote(e.target.value)} placeholder="יום גיבוש, ערב חגיגה..." />
+              <input
+                type="text" value={overrideNote}
+                onChange={(e) => setOverrideNote(e.target.value)}
+                placeholder="חופשת חברה, יום גיבוש, ערב חגיגה..."
+              />
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button type="submit" className="btn2 primary"><IPlus />הוספת חריגה</button>
+            <button type="submit" className="btn2 primary">
+              <IPlus />הוסף לכל העובדים
+            </button>
           </div>
         </form>
 
@@ -264,20 +362,41 @@ export default function AdminSettings({ settings, setSettings, users, currentUse
 
         {overrideList.length === 0 ? (
           <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-            <div style={{ fontSize: 28, marginBottom: 6 }}>📅</div>
-            <div>לא הוגדרו חריגות מותאמות</div>
+            <div style={{ fontSize: 28, marginBottom: 6 }}>🌴</div>
+            <div>טרם הוגדרו חופשות או חריגות לחברה</div>
           </div>
         ) : (
           <div className="table-wrap" style={{ overflowX: 'auto' }}>
             <table className="table2">
-              <thead><tr><th>תאריך</th><th>יום</th><th>שעות</th><th>תיאור</th><th style={{ textAlign: 'end' }}>פעולות</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>תאריך</th>
+                  <th>יום</th>
+                  <th>סוג</th>
+                  <th>שעות</th>
+                  <th>תיאור</th>
+                  <th style={{ textAlign: 'end' }}>פעולות</th>
+                </tr>
+              </thead>
               <tbody>
                 {overrideList.map(([key, val]) => {
                   const d = parseYmd(key);
+                  const isVacation = Number(val.hours) === 0;
+                  const isHalf     = Number(val.hours) === 5;
+                  const isShort    = Number(val.hours) === 6;
+                  const typeLabel  = isVacation ? '🌴 חופשה'
+                                   : isHalf     ? '🌗 חצי יום'
+                                   : isShort    ? '⏱ יום מקוצר'
+                                   : '✎ מותאם';
+                  const tone = isVacation ? 'info'
+                             : isHalf     ? 'warning'
+                             : isShort    ? 'warning'
+                             : 'muted';
                   return (
                     <tr key={key}>
                       <td>{d.getDate()}.{d.getMonth() + 1}.{d.getFullYear()}</td>
                       <td>{HEB_DAYS[d.getDay()]}</td>
+                      <td><span className={`pill2 ${tone}`}>{typeLabel}</span></td>
                       <td><b>{fmtHours(val.hours)}</b></td>
                       <td style={{ color: 'var(--text-muted)' }}>{val.note || '—'}</td>
                       <td>
