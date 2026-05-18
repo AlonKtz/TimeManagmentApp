@@ -1,13 +1,16 @@
 /* ============================================================
    Team Hours — Mobile responsive overrides
-   Layered on top of bold-redesign.css. Two main breakpoints:
-     ≤ 900px  → tablet / narrow desktop (grids collapse to 1-col)
-     ≤ 720px  → phone (sidebar becomes bottom nav, everything tightens)
-     ≤ 380px  → very small phones (further size cuts)
-
-   Touch-safe: minimum 44px tap targets, smooth -webkit overflow,
-   safe-area-inset for iPhones with the home indicator.
+   Drawer pattern: sidebar hidden by default on phones,
+   slides in from the right (RTL) over the content when the
+   hamburger is tapped. Content always fills the screen.
    ============================================================ */
+
+/* ===== Default desktop : hamburger + backdrop are hidden ===== */
+.mobile-menu-trigger,
+.mobile-menu-backdrop,
+.mobile-menu-close {
+  display: none;
+}
 
 /* -------- ≤ 900px : tablet -------- */
 @media (max-width: 900px) {
@@ -21,123 +24,155 @@
 /* -------- ≤ 720px : phone -------- */
 @media (max-width: 720px) {
 
-  /* ===== App shell : single column, content takes full width ===== */
+  /* ===== App shell : single column, FULL WIDTH content ===== */
   .app-shell,
   html[data-sidebar="collapsed"] .app-shell {
     grid-template-columns: 1fr !important;
+    display: block !important;            /* sidebar is removed from flow */
   }
   .app-main {
-    padding: 14px 12px;
-    /* Bottom padding leaves room for the fixed bottom nav + iPhone safe area */
-    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    padding: 70px 14px 24px 14px;          /* top padding leaves room for hamburger */
+    min-width: 0;
+    width: 100%;
   }
-  .page-wrap { max-width: none; margin: 0; }
+  .page-wrap {
+    max-width: 100% !important;
+    margin: 0 !important;
+    width: 100%;
+  }
 
-  /* ===== Sidebar → fixed bottom navigation bar ===== */
+  /* ===== Sidebar → fixed slide-in drawer from the right (RTL) ===== */
   .sidebar {
-    position: fixed;
-    inset: auto 0 0 0;      /* bottom: 0, full width */
-    top: auto;
-    height: auto;
-    flex-direction: row;
-    align-items: stretch;
-    gap: 2px;
-    padding: 6px 4px;
-    padding-bottom: max(6px, env(safe-area-inset-bottom, 6px));
-    border-top: 1px solid var(--border);
-    border-inline-start: none;
-    z-index: 100;
-    overflow-x: auto;
-    overflow-y: hidden;
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    right: 0 !important;
+    left: auto !important;
+    height: 100vh !important;
+    width: min(86vw, 320px) !important;
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(.4, 0, .2, 1);
+    z-index: 200;
+    border-inline-start: 1px solid var(--border);
+    border-top: none;
+    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-    background:
-      linear-gradient(180deg,
-        color-mix(in oklab, var(--surface) 80%, transparent) 0%,
-        color-mix(in oklab, var(--surface) 96%, transparent) 100%);
+    padding: 20px 14px;
+    padding-top: max(20px, env(safe-area-inset-top, 20px));
+    padding-bottom: max(20px, env(safe-area-inset-bottom, 20px));
+    box-shadow: -20px 0 60px -10px rgba(0, 0, 0, 0.25);
   }
-  html.theme-dark .sidebar {
-    background: linear-gradient(180deg, rgba(17,24,26,0.85) 0%, rgba(17,24,26,0.98) 100%);
+  html[data-sidebar-mobile="open"] .sidebar {
+    transform: translateX(0) !important;
   }
 
-  /* Hide brand, section labels, footer chrome on mobile bottom nav */
-  .sidebar-brand,
+  /* Always show full labels in drawer on mobile, regardless of desktop collapsed state */
+  .sidebar-brand-text,
+  .sidebar-item-label,
   .sidebar-section-label,
-  .sidebar-footer,
-  .sidebar-toggle {
-    display: none !important;
+  .sidebar-user-meta,
+  .sidebar-footer-text {
+    display: block !important;
+  }
+  .sidebar-brand { justify-content: flex-start !important; }
+  .sidebar-item { justify-content: flex-start !important; padding: 12px 14px !important; }
+
+  /* Hide the desktop collapse chevron on mobile (replaced by hamburger / X) */
+  .sidebar-toggle { display: none !important; }
+
+  /* ===== Hamburger trigger button — top-LEFT corner of viewport ===== */
+  .mobile-menu-trigger {
+    display: flex !important;
+    position: fixed;
+    top: max(14px, env(safe-area-inset-top, 14px));
+    left: 14px;
+    right: auto;
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    background: color-mix(in oklab, var(--surface) 92%, transparent);
+    border: 1px solid var(--border);
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 130;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.12);
+    color: var(--text);
+    padding: 0;
+    transition: opacity 0.2s, transform 0.2s;
+  }
+  .mobile-menu-trigger svg { width: 22px; height: 22px; }
+  .mobile-menu-trigger:active { transform: scale(0.95); }
+  html[data-sidebar-mobile="open"] .mobile-menu-trigger {
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.85);
   }
 
-  /* Nav items become tap-friendly tiles with icon-over-label */
-  .sidebar-item {
-    flex: 1 0 auto;
-    min-width: 60px;
-    min-height: 52px;
-    flex-direction: column;
-    justify-content: center;
-    gap: 3px;
-    padding: 6px 8px;
-    font-size: 10px;
-    font-weight: 600;
-    border-radius: 12px;
-    text-align: center;
-    position: relative;
-  }
-  .sidebar-item .sidebar-item-icon { width: 22px; height: 22px; }
-  .sidebar-item .sidebar-item-icon svg { width: 22px; height: 22px; }
-  .sidebar-item .sidebar-item-label {
-    display: block !important;     /* override the [collapsed] hide */
-    font-size: 10px;
-    line-height: 1.1;
-    max-width: 64px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .sidebar-item.active::before { display: none; }   /* hide the side rail */
-  .sidebar-item.active {
-    background: var(--grad-primary);
-    color: white;
-  }
-  .sidebar-item .sidebar-item-count {
+  /* ===== Mobile-only X close button — inside the drawer, top-end corner ===== */
+  .mobile-menu-close {
+    display: flex !important;
     position: absolute;
-    top: 4px;
-    inset-inline-end: 10px;
-    margin: 0;
-    padding: 0 5px;
-    min-width: 16px;
-    height: 16px;
-    font-size: 9px;
-    border: none;
-    display: grid;
-    place-items: center;
-    background: var(--danger);
-    color: white;
+    top: 14px;
+    left: 14px;                /* RTL: physical left = end of inline */
+    right: auto;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 5;
+    color: var(--text-muted);
+    padding: 0;
+    transition: all 0.15s;
   }
-  .sidebar-item.active .sidebar-item-count {
-    background: rgba(255,255,255,0.28);
+  .mobile-menu-close:hover { color: var(--text); background: var(--surface); }
+  .mobile-menu-close svg { width: 18px; height: 18px; }
+
+  /* Sidebar brand needs right padding so it doesn't slip under the close button */
+  .sidebar-brand { padding-inline-end: 50px !important; }
+
+  /* ===== Backdrop overlay ===== */
+  .mobile-menu-backdrop {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s;
+    z-index: 150;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html[data-sidebar-mobile="open"] .mobile-menu-backdrop {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   /* ===== Topbar header ===== */
-  .topbar2 { margin-bottom: 14px; gap: 10px; }
-  .topbar2-title { font-size: 22px; }
+  .topbar2 { margin-bottom: 14px; gap: 10px; flex-wrap: wrap; }
+  .topbar2-title { font-size: 22px; line-height: 1.2; }
   .topbar2-eyebrow { font-size: 10px; }
   .topbar2-actions { flex-wrap: wrap; }
 
   /* ===== Hero punch ===== */
   .hero-punch { padding: 22px 18px; border-radius: 22px; min-height: auto; }
-  .hero-grid { gap: 18px; }
+  .hero-grid { grid-template-columns: 1fr !important; gap: 18px; }
   .hero-eyebrow { font-size: 11px; padding: 5px 10px; margin-bottom: 12px; }
   .hero-timer { font-size: 48px; gap: 4px; }
   .hero-timer .sec { font-size: 22px; }
-  .hero-sub { font-size: 12px; gap: 6px; margin-top: 8px; }
+  .hero-sub { font-size: 12px; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
   .hero-cta { min-width: 0 !important; gap: 10px; }
-  .punch-btn { padding: 14px 18px; font-size: 15px; border-radius: 14px; min-height: 50px; }
-  .location-seg2 button { padding: 9px 10px; font-size: 12px; }
+  .punch-btn { padding: 14px 18px; font-size: 15px; border-radius: 14px; min-height: 50px; width: 100%; }
+  .location-seg2 button { padding: 10px 12px; font-size: 13px; }
 
   /* ===== Stat cards ===== */
-  .stats3 { gap: 12px; }
+  .stats3 { gap: 12px; grid-template-columns: 1fr !important; }
   .stat2 { padding: 18px 16px; border-radius: 18px; }
   .stat2-value { font-size: 28px; }
   .stat2-value .unit { font-size: 13px; }
@@ -147,7 +182,7 @@
 
   /* ===== Cards ===== */
   .card2 { padding: 18px 14px; border-radius: 18px; }
-  .card2-title { margin-bottom: 14px; flex-wrap: wrap; }
+  .card2-title { margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
   .card2-title h3 { font-size: 15px; }
 
   /* ===== Tables : keep horizontal scroll smooth ===== */
@@ -174,11 +209,8 @@
   }
   .field-label { font-size: 11px; }
 
-  /* Buttons in forms full-width */
-  .btn2 {
-    min-height: 44px;
-    padding: 11px 16px;
-  }
+  /* Buttons */
+  .btn2 { min-height: 44px; padding: 11px 16px; }
 
   /* ===== Period nav touch sizes ===== */
   .period-nav2 button { width: 36px; height: 36px; }
@@ -192,14 +224,14 @@
   .heatmap-legend { font-size: 10px; gap: 6px; }
   .heatmap-legend .cell { width: 12px; height: 12px; }
 
-  /* ===== Donut already stacked above (≤900px); tighten further ===== */
+  /* ===== Donut ===== */
   .donut { width: 140px; height: 140px; }
   .donut-center .big { font-size: 24px; }
   .legend2 { gap: 10px; }
   .legend2-text strong { font-size: 13px; }
   .legend2-text span { font-size: 11px; }
 
-  /* ===== Quarterly rings ===== */
+  /* ===== Quarterly rings : 2-col grid ===== */
   .q-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 12px; }
   .q-card { padding: 16px 12px; border-radius: 16px; }
   .q-card-ring { width: 96px; height: 96px; margin: 12px auto; }
@@ -233,11 +265,7 @@
   .account-info { text-align: center; }
   .account-info h2 { font-size: 22px; }
   .account-info .role { font-size: 12px; }
-  .account-info .stats {
-    justify-content: center;
-    gap: 14px;
-    margin-top: 8px;
-  }
+  .account-info .stats { justify-content: center; gap: 14px; margin-top: 8px; }
   .account-info .stats b { font-size: 13px; }
 
   /* ===== Admin: weekday grid wraps on narrow ===== */
@@ -254,15 +282,15 @@
   .login-mark { width: 56px; height: 56px; border-radius: 18px; }
   .login-mark svg { width: 26px; height: 26px; }
 
-  /* ===== Toasts (so they don't sit under bottom nav) ===== */
+  /* ===== Toasts above any nav ===== */
   .toast-stack {
-    bottom: calc(86px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
     left: 12px;
     right: 12px;
   }
   .toast { font-size: 12px; padding: 10px 14px; }
 
-  /* ===== Background orbs slightly weaker on mobile for legibility ===== */
+  /* ===== Background orbs weaker on mobile for legibility ===== */
   .bg-orb { opacity: 0.35; }
   html.theme-dark .bg-orb { opacity: 0.22; }
 }
@@ -274,8 +302,7 @@
   .hero-timer .sec { font-size: 18px; }
   .stat2-value { font-size: 24px; }
   .leave-stat-value { font-size: 38px; }
-  .sidebar-item { min-width: 54px; padding: 6px 4px; }
-  .sidebar-item .sidebar-item-label { font-size: 9px; max-width: 54px; }
   .q-grid { grid-template-columns: 1fr !important; }
   .form-row2 .field input { font-size: 16px; }
+  .app-main { padding: 64px 12px 20px 12px; }
 }
