@@ -109,13 +109,13 @@ input[type="datetime-local"] {
   /* Hide the desktop collapse chevron on mobile (replaced by hamburger / X) */
   .sidebar-toggle { display: none !important; }
 
-  /* ===== Hamburger trigger button — top-LEFT corner of viewport ===== */
+  /* ===== Hamburger trigger button — top-RIGHT corner (RTL natural side) ===== */
   .mobile-menu-trigger {
     display: flex !important;
     position: fixed;
     top: max(14px, env(safe-area-inset-top, 14px));
-    left: 14px;
-    right: auto;
+    right: 14px;
+    left: auto;
     width: 46px;
     height: 46px;
     border-radius: 14px;
