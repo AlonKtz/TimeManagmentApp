@@ -12,6 +12,35 @@
   display: none;
 }
 
+/* ============================================================
+   Global form input fixes (apply on every viewport).
+   Inputs default to an intrinsic width based on their `size`
+   attribute (~20ch), and grid children default to a min-width
+   of min-content — together this makes <input type="date">
+   spill outside its grid column. Force the input to fill its
+   container and allow the container itself to shrink.
+   ============================================================ */
+.field { min-width: 0; }
+.form-row, .form-row2 { min-width: 0; }
+.form-row > *, .form-row2 > * { min-width: 0; }
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+/* iOS date inputs come with extra UA padding — strip it so our
+   own 12px/14px padding controls the height consistently */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: var(--surface);
+}
+
 /* -------- ≤ 900px : tablet -------- */
 @media (max-width: 900px) {
   .app-main { padding: 22px 20px 22px 16px; }
