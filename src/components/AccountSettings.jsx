@@ -1,14 +1,15 @@
 import { useState } from 'react';
+import { IPencil } from './icons';
 
 const JOB_PRESETS = [
-  { label: 'משרה מלאה', sublabel: '100% — א׳–ד׳ 9 שעות, ה׳ 8.5 שעות', value: 100 },
-  { label: 'חצי משרה',  sublabel: '50% — כל יום 4.5 שעות',             value: 50  },
-  { label: 'אחוז מותאם אישית', sublabel: '',                            value: null },
+  { label: 'משרה מלאה',         sublabel: '100% — א׳–ד׳ 9 שעות, ה׳ 8.5 שעות', value: 100 },
+  { label: 'חצי משרה',           sublabel: '50% — כל יום 4.5 שעות',             value: 50  },
+  { label: 'אחוז מותאם אישית',   sublabel: '',                                  value: null },
 ];
 
 export default function AccountSettings({ user, auth }) {
-  const savedPct  = user.jobPercent ?? 100;
-  const isCustom  = savedPct !== 100 && savedPct !== 50;
+  const savedPct = user.jobPercent ?? 100;
+  const isCustom = savedPct !== 100 && savedPct !== 50;
   const [selectedPreset, setSelectedPreset] = useState(isCustom ? null : savedPct);
   const [customPct, setCustomPct]           = useState(isCustom ? String(savedPct) : '');
   const [jobFlash, setJobFlash]             = useState('');
@@ -28,29 +29,41 @@ export default function AccountSettings({ user, auth }) {
 
   return (
     <div>
-      {/* ===== Profile ===== */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-title">פרטי חשבון</div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <div className="user-avatar" style={{ width: 48, height: 48, fontSize: 20, flexShrink: 0 }}>
-            {user.name.charAt(0)}
-          </div>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 16 }}>{user.name}</div>
-            <div style={{ color: 'var(--text-muted)', fontSize: 13 }} dir="ltr">{user.email}</div>
-            <div style={{ marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {user.role === 'admin'
-                ? <span className="pill pill-warning">מנהל</span>
-                : <span className="pill pill-muted">עובד</span>}
-            </div>
+      <div className="topbar2">
+        <div className="topbar2-left">
+          <div className="topbar2-eyebrow">פרופיל אישי</div>
+          <div className="topbar2-title">החשבון שלי</div>
+        </div>
+      </div>
+
+      {/* ===== Hero card ===== */}
+      <div className="account-hero">
+        <div className="account-avatar">{(user.name || '?').slice(0, 1)}</div>
+        <div className="account-info">
+          <h2>{user.name}</h2>
+          <div className="role" dir="ltr" style={{ textAlign: 'right' }}>{user.email}</div>
+          <div className="stats">
+            <div><b>{user.role === 'admin' ? 'מנהל' : 'עובד'}</b>תפקיד</div>
+            <div><b>{savedPct}%</b>אחוז משרה</div>
+            {user.createdAt && (
+              <div><b>{new Date(user.createdAt).toLocaleDateString('he-IL')}</b>הצטרפת למערכת</div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* ===== Job Percent ===== */}
-      <div className="card">
-        <div className="card-title">אחוזי משרה</div>
-        {jobFlash && <div className="form-success">{jobFlash}</div>}
+      {/* ===== Job percent card ===== */}
+      <div className="card2" style={{ marginTop: 16 }}>
+        <div className="card2-title">
+          <h3>אחוזי משרה</h3>
+          <IPencil style={{ width: 16, height: 16, color: 'var(--text-muted)' }} />
+        </div>
+
+        {jobFlash && (
+          <div style={{ background: 'var(--success-soft)', color: 'var(--success)', padding: '10px 14px', borderRadius: 10, marginBottom: 14, fontSize: 13, fontWeight: 600 }}>
+            ✓ {jobFlash}
+          </div>
+        )}
 
         <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
           קובע את יעד השעות היומי שלך. הגדרה זו משפיעה על הסטטיסטיקות האישיות שלך בלבד.
@@ -69,9 +82,9 @@ export default function AccountSettings({ user, auth }) {
                   display: 'flex',
                   alignItems: 'flex-start',
                   gap: 12,
-                  padding: '12px 14px',
+                  padding: '14px 16px',
                   border: `2px solid ${isSelected ? 'var(--primary)' : 'var(--border)'}`,
-                  borderRadius: 'var(--radius-sm)',
+                  borderRadius: 14,
                   background: isSelected ? 'var(--primary-soft)' : 'var(--surface)',
                   cursor: 'pointer',
                   transition: 'all 0.15s',
@@ -111,25 +124,26 @@ export default function AccountSettings({ user, auth }) {
 
         {effectivePct > 0 && (
           <div style={{
-            padding: '10px 14px',
+            padding: '12px 14px',
             background: 'var(--surface-2)',
-            borderRadius: 'var(--radius-sm)',
+            borderRadius: 12,
             fontSize: 13,
             color: 'var(--text-muted)',
             marginBottom: 16,
           }}>
-            <strong style={{ color: 'var(--text)' }}>תצוגה מקדימה:</strong>{' '}
+            <strong style={{ color: 'var(--text)' }}>תצוגה מקדימה: </strong>
             {effectivePct >= 100
               ? 'א׳–ד׳: 9 שעות, ה׳: 8.5 שעות'
               : `כל יום עבודה: ${Math.round((9 * effectivePct / 100) * 4) / 4} שעות (כולל יום ה׳)`}
           </div>
         )}
 
-        <div className="form-actions">
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button
-            className="btn btn-primary"
+            className="btn2 primary"
             onClick={saveJobPercent}
             disabled={savedPct === effectivePct}
+            style={savedPct === effectivePct ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
           >
             שמירת אחוזי משרה
           </button>
