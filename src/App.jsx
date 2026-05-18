@@ -12,6 +12,9 @@ import AdminSettings from './components/AdminSettings';
 import AccountSettings from './components/AccountSettings';
 import DaysOff from './components/DaysOff';
 import QuarterlyView from './components/QuarterlyView';
+import Sidebar from './components/Sidebar';
+import MeshBackground from './components/MeshBackground';
+import GradDefs from './components/GradDefs';
 
 // Marker note used to identify a vacation-day entry.
 // Use a literal Hebrew prefix that survives any DB CHECK constraint on `mode`.
@@ -438,101 +441,75 @@ export default function App() {
   const userDaysOff = daysOff[user.id] || [];
   const pendingCount = auth.users.filter((u) => u.status === 'pending').length;
 
-  const tabs = [
-    { id: 'dashboard', label: 'מסך ראשי' },
-    { id: 'entries',   label: 'השעות שלי' },
-    { id: 'daysoff',   label: 'ימי חופש' },
-    { id: 'quarterly', label: 'סיכום רבעוני' },
-    { id: 'account',   label: 'החשבון שלי' },
-  ];
-  if (user.role === 'admin') {
-    tabs.push({
-      id: 'admin',
-      label: pendingCount > 0 ? `הגדרות וניהול (${pendingCount})` : 'הגדרות וניהול',
-    });
-  }
-
   return (
-    <div className="app">
-      <div className="topbar">
-        <div className="topbar-title">
-          <div className="logo">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"/>
-              <polyline points="12 6 12 12 16 14"/>
-            </svg>
+    <>
+      <MeshBackground />
+      <GradDefs />
+      <div className="app-shell">
+        <main className="app-main">
+          <div className="page-wrap page-enter" key={tab}>
+            {tab === 'dashboard' && (
+              <Dashboard
+                user={user}
+                entries={entries}
+                settings={settings}
+                setSettings={setSettings}
+                activePunch={activePunch}
+                onPunch={handlePunch}
+                onEditPunch={handleEditPunch}
+                daysOff={userDaysOff}
+              />
+            )}
+            {tab === 'entries' && (
+              <EntriesTab
+                user={user}
+                entries={entriesByUser}
+                setEntries={setEntries}
+                settings={settings}
+              />
+            )}
+            {tab === 'daysoff' && (
+              <DaysOff
+                userId={user.id}
+                daysOff={daysOff}
+                setDaysOff={setDaysOff}
+                settings={settings}
+                jobPercent={user.jobPercent ?? 100}
+              />
+            )}
+            {tab === 'quarterly' && (
+              <QuarterlyView
+                user={user}
+                entries={entries}
+                settings={settings}
+                daysOff={daysOff}
+              />
+            )}
+            {tab === 'account' && (
+              <AccountSettings user={user} auth={auth} />
+            )}
+            {tab === 'admin' && user.role === 'admin' && (
+              <AdminSettings
+                settings={settings}
+                setSettings={setSettings}
+                users={auth.users}
+                setUsers={auth.setUsers}
+                currentUser={user}
+                auth={auth}
+              />
+            )}
           </div>
-          מעקב שעות צוות
-        </div>
-        <div className="topbar-user">
-          <div className="user-chip">
-            <div className="user-avatar">{user.name.charAt(0)}</div>
-            <span>{user.name}</span>
-            {user.role === 'admin' && <span className="admin-badge">מנהל</span>}
-          </div>
-          <button className="btn btn-secondary btn-sm" onClick={auth.logout}>יציאה</button>
-        </div>
+        </main>
+        <Sidebar
+          tab={tab}
+          setTab={setTab}
+          user={user}
+          working={!!activePunch}
+          pendingCount={pendingCount}
+          onLogout={auth.logout}
+        />
       </div>
-
-      <div className="tabs">
-        {tabs.map((t) => (
-          <button key={t.id} className={`tab ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'dashboard' && (
-        <Dashboard
-          user={user}
-          entries={entries}
-          settings={settings}
-          setSettings={setSettings}
-          activePunch={activePunch}
-          onPunch={handlePunch}
-          onEditPunch={handleEditPunch}
-          daysOff={userDaysOff}
-        />
-      )}
-      {tab === 'entries' && (
-        <EntriesTab
-          user={user}
-          entries={entriesByUser}
-          setEntries={setEntries}
-          settings={settings}
-        />
-      )}
-      {tab === 'daysoff' && (
-        <DaysOff
-          userId={user.id}
-          daysOff={daysOff}
-          setDaysOff={setDaysOff}
-          settings={settings}
-          jobPercent={user.jobPercent ?? 100}
-        />
-      )}
-      {tab === 'quarterly' && (
-        <QuarterlyView
-          user={user}
-          entries={entries}
-          settings={settings}
-          daysOff={daysOff}
-        />
-      )}
-      {tab === 'account' && (
-        <AccountSettings user={user} auth={auth} />
-      )}
-      {tab === 'admin' && user.role === 'admin' && (
-        <AdminSettings
-          settings={settings}
-          setSettings={setSettings}
-          users={auth.users}
-          setUsers={auth.setUsers}
-          currentUser={user}
-          auth={auth}
-        />
-      )}
-    </div>
+    </>
   );
 }
 

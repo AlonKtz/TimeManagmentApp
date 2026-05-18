@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="he" dir="rtl" class="theme-dark">
+<html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,6 +7,23 @@
   <link rel="dns-prefetch" href="https://yxmbammlzweasjvpouqn.supabase.co" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⏱</text></svg>" />
   <title>מעקב שעות צוות</title>
+  <script>
+    // Apply persisted theme + sidebar state BEFORE first paint (no FOUC).
+    // Defaults: light theme, expanded sidebar, animations on.
+    (function () {
+      try {
+        var theme = localStorage.getItem('th-theme');
+        if (theme === 'dark') document.documentElement.classList.add('theme-dark');
+        var sb = localStorage.getItem('th-sidebar');
+        document.documentElement.dataset.sidebar = sb === 'collapsed' ? 'collapsed' : 'expanded';
+        var anim = localStorage.getItem('th-anim');
+        document.documentElement.dataset.anim = anim === 'off' ? 'off' : 'on';
+      } catch (e) {
+        document.documentElement.dataset.sidebar = 'expanded';
+        document.documentElement.dataset.anim = 'on';
+      }
+    })();
+  </script>
 </head>
 <body>
   <div id="root"></div>
