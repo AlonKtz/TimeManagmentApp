@@ -9,9 +9,9 @@ const Down = (p) => <IChevronL {...p} style={{ ...(p.style || {}), transform: 'r
 // label/value/target are the real numbers; pct is recomputed here.
 // Treats target=0 as "no target" (shows just the value, no diff line).
 export default function StatCard({ label, value, target }) {
-  const v       = useAnimatedNumber(value, { duration: 900, deps: [label] });
+  const v       = useAnimatedNumber(value, { duration: 900 });
   const pct     = target > 0 ? Math.min(100, (value / target) * 100) : 0;
-  const pctAnim = useAnimatedNumber(pct,   { duration: 1100, deps: [label] });
+  const pctAnim = useAnimatedNumber(pct,   { duration: 1100 });
   const diff = value - target;
   const over = diff >= 0;
 

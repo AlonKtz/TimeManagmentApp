@@ -7,8 +7,8 @@ export default function LocationSplit({ office, home }) {
   const officePct = total > 0 ? (office / total) * 100 : 0;
   const homePct   = total > 0 ? (home   / total) * 100 : 0;
 
-  const officePctA = useAnimatedNumber(officePct, { duration: 1100, deps: [officePct] });
-  const totalA     = useAnimatedNumber(total,     { duration: 1100, deps: [total] });
+  const officePctA = useAnimatedNumber(officePct, { duration: 1100 });
+  const totalA     = useAnimatedNumber(total,     { duration: 1100 });
 
   const r = 56;
   const c = 2 * Math.PI * r;
