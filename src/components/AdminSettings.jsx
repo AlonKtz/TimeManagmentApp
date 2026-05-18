@@ -71,6 +71,23 @@ export default function AdminSettings({ settings, setSettings, users, currentUse
     setSettings({ ...settings, overrides: rest });
   };
 
+  // Per-date override for an Israeli holiday — keyed by date in the same
+  // overrides map. getHolidayInfo() in business.js already checks overrides
+  // before falling back to the type default, so this just works app-wide.
+  const setHolidayOverride = (date, hours, note, type) => {
+    setSettings({
+      ...settings,
+      overrides: {
+        ...(settings.overrides || {}),
+        [date]: { hours, note: note || '', type: type || 'custom' },
+      },
+    });
+  };
+  const clearHolidayOverride = (date) => {
+    const { [date]: _, ...rest } = settings.overrides || {};
+    setSettings({ ...settings, overrides: rest });
+  };
+
   const removeUser = async (userId) => {
     if (userId === currentUser.id) return;
     if (!confirm('למחוק את המשתמש? כל הנתונים שלו יימחקו.')) return;
@@ -238,7 +255,7 @@ export default function AdminSettings({ settings, setSettings, users, currentUse
           </div>
         </div>
         <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
-          ניתן לכבות תאריך ספציפי על ידי לחיצה על הכפתור.
+          ערוך שעות לתאריך ספציפי (יחליף את ברירת המחדל של סוג החג), כבה חג שלא חל אצלכם, או חזור לברירת מחדל בלחיצה על הכפתור ↺.
         </div>
         {visibleHolidays.length === 0 ? (
           <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -249,22 +266,77 @@ export default function AdminSettings({ settings, setSettings, users, currentUse
           <div className="table-wrap" style={{ overflowX: 'auto' }}>
             <table className="table2">
               <thead>
-                <tr><th>תאריך</th><th>יום</th><th>שם החג</th><th>סוג</th><th>שעות</th><th style={{ textAlign: 'end' }}>סטטוס</th></tr>
+                <tr><th>תאריך</th><th>יום</th><th>שם החג</th><th>סוג</th><th>שעות (ערוך)</th><th style={{ textAlign: 'end' }}>סטטוס</th></tr>
               </thead>
               <tbody>
                 {visibleHolidays.map((h) => {
                   const d = parseYmd(h.key);
                   const isDisabled = disabled.includes(h.key);
-                  const hours = hh[h.type] ?? HOLIDAY_TYPES[h.type].defaultHours;
+                  const typeDefault = hh[h.type] ?? HOLIDAY_TYPES[h.type].defaultHours;
+                  const override = settings.overrides?.[h.key];
+                  const hasOverride = !!override;
+                  const effectiveHours = hasOverride ? Number(override.hours) : typeDefault;
                   const tone = h.type === 'chag' ? 'danger' : h.type === 'erev' ? 'warning' : h.type === 'memorial' ? 'info' : 'muted';
                   return (
                     <tr key={h.key} style={isDisabled ? { opacity: 0.5 } : {}}>
                       <td>{d.getDate()}.{d.getMonth() + 1}.{d.getFullYear()}</td>
                       <td>{HEB_DAYS[d.getDay()]}</td>
-                      <td>{h.note}</td>
+                      <td>
+                        {h.note}
+                        {hasOverride && !isDisabled && (
+                          <span className="pill2 primary" style={{ marginInlineStart: 6, fontSize: 10 }}>מותאם</span>
+                        )}
+                      </td>
                       <td><span className={`pill2 ${tone}`}>{HOLIDAY_TYPES[h.type].label}</span></td>
                       <td>
-                        {isDisabled ? <span style={{ color: 'var(--text-soft)' }}>—</span> : <b>{fmtHours(hours)}</b>}
+                        {isDisabled ? (
+                          <span style={{ color: 'var(--text-soft)' }}>—</span>
+                        ) : (
+                          <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+                            <input
+                              type="number" step="0.25" min="0" max="24"
+                              key={`${h.key}-${effectiveHours}`}            /* remount when default changes elsewhere */
+                              defaultValue={effectiveHours}
+                              onBlur={(e) => {
+                                const v = parseFloat(e.target.value);
+                                if (isNaN(v) || v < 0 || v > 24) {
+                                  e.target.value = effectiveHours;
+                                  return;
+                                }
+                                if (Math.abs(v - typeDefault) < 0.001) {
+                                  // back to type default — drop the override if any
+                                  if (hasOverride) clearHolidayOverride(h.key);
+                                } else if (Math.abs(v - effectiveHours) >= 0.001) {
+                                  setHolidayOverride(h.key, v, h.note, h.type);
+                                }
+                              }}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                              style={{
+                                width: 70,
+                                padding: '6px 8px',
+                                textAlign: 'center',
+                                fontWeight: 600,
+                                fontVariantNumeric: 'tabular-nums',
+                                border: hasOverride ? '1.5px solid var(--primary)' : '1px solid var(--border-strong)',
+                                borderRadius: 8,
+                                background: hasOverride ? 'var(--primary-soft)' : 'var(--surface)',
+                                color: 'var(--text)',
+                                outline: 'none',
+                                minHeight: 32,
+                              }}
+                            />
+                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>ש׳</span>
+                            {hasOverride && (
+                              <button
+                                type="button"
+                                className="icon-btn2"
+                                onClick={() => clearHolidayOverride(h.key)}
+                                title={`חזרה לברירת מחדל (${fmtHours(typeDefault)})`}
+                                style={{ width: 30, height: 30, fontSize: 14 }}
+                              >↺</button>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td>
                         <div className="row" style={{ justifyContent: 'flex-end' }}>
