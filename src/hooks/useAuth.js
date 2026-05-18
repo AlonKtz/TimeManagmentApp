@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import sb from '../lib/supabase';
 import { loadToken, saveToken, savePunch } from '../utils/storage';
+import { touchLastActive } from '../lib/activity';
 
 // Map DB profile row (snake_case) → app-friendly object
 function normalizeProfile(p) {
@@ -59,6 +60,8 @@ export function useAuth() {
         const rows2 = await sb.select('profiles', `id=eq.${userId}`);
         if (rows2[0]) setCurrentUser(normalizeProfile(rows2[0]));
       }
+      // Stamp last activity (resets daily idle metric for admin)
+      touchLastActive(userId);
     } catch (e) {
       console.error('[auth] profile load:', e);
     }

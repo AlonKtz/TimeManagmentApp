@@ -4,6 +4,7 @@ import { ymd, fmtTime24, diffHours } from './utils/date';
 import { loadPunch, savePunch } from './utils/storage';
 import { getPersonalDailyTarget } from './utils/business';
 import sb from './lib/supabase';
+import { touchLastActive } from './lib/activity';
 import { useAuth } from './hooks/useAuth';
 import LoginScreen from './components/LoginScreen';
 import Dashboard from './components/Dashboard';
@@ -133,6 +134,7 @@ export default function App() {
       loadEntries();
       loadSettings();
       loadPunchState();
+      touchLastActive(user.id);
     };
 
     document.addEventListener('visibilitychange', onVisibility);
@@ -148,6 +150,7 @@ export default function App() {
       lastFocus = Date.now();
       loadEntries();
       loadPunchState();
+      touchLastActive(user.id);
     };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);

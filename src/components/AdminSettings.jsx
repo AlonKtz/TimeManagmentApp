@@ -3,6 +3,30 @@ import { HEB_DAYS, HOLIDAY_TYPES, ISRAELI_HOLIDAYS, DEFAULT_SETTINGS } from '../
 import { ymd, parseYmd, fmtHours } from '../utils/date';
 import { ITrash, IPlus } from './icons';
 
+// Human-friendly "מלפני 5 דקות" / "אתמול" / etc. with full-date fallback
+function timeAgoHe(iso) {
+  if (!iso) return { short: '—', full: 'אין מידע על פעילות', stale: true };
+  const then = new Date(iso).getTime();
+  const now = Date.now();
+  const sec = Math.max(0, Math.floor((now - then) / 1000));
+  const full = new Date(iso).toLocaleString('he-IL', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+  let short;
+  if (sec < 60)            short = 'עכשיו';
+  else if (sec < 3600)     short = `לפני ${Math.floor(sec / 60)} דק׳`;
+  else if (sec < 86400)    short = `לפני ${Math.floor(sec / 3600)} שעות`;
+  else if (sec < 86400 * 2) short = 'אתמול';
+  else if (sec < 86400 * 7) short = `לפני ${Math.floor(sec / 86400)} ימים`;
+  else if (sec < 86400 * 30) short = `לפני ${Math.floor(sec / (86400 * 7))} שבועות`;
+  else {
+    const d = new Date(iso);
+    short = `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`;
+  }
+  return { short, full, stale: sec > 86400 * 14 };
+}
+
 export default function AdminSettings({ settings, setSettings, users, currentUser, auth }) {
   const [sh, setSh] = useState(settings.standardHours);
   const [hh, setHh] = useState(settings.holidayHours || DEFAULT_SETTINGS.holidayHours);
@@ -495,42 +519,55 @@ export default function AdminSettings({ settings, setSettings, users, currentUse
         </div>
         <div className="table-wrap" style={{ overflowX: 'auto' }}>
           <table className="table2">
-            <thead><tr><th>שם</th><th>אימייל</th><th>תפקיד</th><th>תאריך הצטרפות</th><th style={{ textAlign: 'end' }}>פעולות</th></tr></thead>
+            <thead><tr><th>שם</th><th>אימייל</th><th>תפקיד</th><th>הצטרפות</th><th>פעילות אחרונה</th><th style={{ textAlign: 'end' }}>פעולות</th></tr></thead>
             <tbody>
-              {activeUsers.map((u) => (
-                <tr key={u.id}>
-                  <td>
-                    <div className="row" style={{ gap: 10 }}>
-                      <div style={{
-                        width: 28, height: 28, borderRadius: '50%',
-                        background: 'var(--grad-primary)', color: 'white',
-                        display: 'grid', placeItems: 'center',
-                        fontSize: 12, fontWeight: 700, flex: '0 0 auto',
-                      }}>{u.name.charAt(0)}</div>
-                      <strong>{u.name}</strong>
-                      {u.id === currentUser.id && <span className="pill2 info">זה אתה</span>}
-                    </div>
-                  </td>
-                  <td style={{ color: 'var(--text-muted)' }} dir="ltr">{u.email}</td>
-                  <td>
-                    {u.role === 'admin'
-                      ? <span className="pill2 warning">מנהל</span>
-                      : <span className="pill2 muted">עובד</span>}
-                  </td>
-                  <td style={{ color: 'var(--text-muted)' }}>
-                    {u.createdAt ? new Date(u.createdAt).toLocaleDateString('he-IL') : '—'}
-                  </td>
-                  <td>
-                    <div className="row" style={{ justifyContent: 'flex-end' }}>
-                      {u.id !== currentUser.id && (
-                        <button className="icon-btn2 danger" onClick={() => removeUser(u.id)} title="מחיקה">
-                          <ITrash width="14" height="14" />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {activeUsers.map((u) => {
+                const activity = timeAgoHe(u.last_active_at);
+                return (
+                  <tr key={u.id}>
+                    <td>
+                      <div className="row" style={{ gap: 10 }}>
+                        <div style={{
+                          width: 28, height: 28, borderRadius: '50%',
+                          background: 'var(--grad-primary)', color: 'white',
+                          display: 'grid', placeItems: 'center',
+                          fontSize: 12, fontWeight: 700, flex: '0 0 auto',
+                        }}>{u.name.charAt(0)}</div>
+                        <strong>{u.name}</strong>
+                        {u.id === currentUser.id && <span className="pill2 info">זה אתה</span>}
+                      </div>
+                    </td>
+                    <td style={{ color: 'var(--text-muted)' }} dir="ltr">{u.email}</td>
+                    <td>
+                      {u.role === 'admin'
+                        ? <span className="pill2 warning">מנהל</span>
+                        : <span className="pill2 muted">עובד</span>}
+                    </td>
+                    <td style={{ color: 'var(--text-muted)' }}>
+                      {u.createdAt ? new Date(u.createdAt).toLocaleDateString('he-IL') : '—'}
+                    </td>
+                    <td title={activity.full}>
+                      <span style={{
+                        color: !u.last_active_at ? 'var(--text-soft)'
+                             : activity.stale     ? 'var(--text-muted)'
+                             : 'var(--text)',
+                        fontWeight: !u.last_active_at ? 400 : 500,
+                      }}>
+                        {activity.short}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="row" style={{ justifyContent: 'flex-end' }}>
+                        {u.id !== currentUser.id && (
+                          <button className="icon-btn2 danger" onClick={() => removeUser(u.id)} title="מחיקה">
+                            <ITrash width="14" height="14" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
