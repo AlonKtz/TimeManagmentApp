@@ -1,0 +1,281 @@
+/* ============================================================
+   Team Hours — Mobile responsive overrides
+   Layered on top of bold-redesign.css. Two main breakpoints:
+     ≤ 900px  → tablet / narrow desktop (grids collapse to 1-col)
+     ≤ 720px  → phone (sidebar becomes bottom nav, everything tightens)
+     ≤ 380px  → very small phones (further size cuts)
+
+   Touch-safe: minimum 44px tap targets, smooth -webkit overflow,
+   safe-area-inset for iPhones with the home indicator.
+   ============================================================ */
+
+/* -------- ≤ 900px : tablet -------- */
+@media (max-width: 900px) {
+  .app-main { padding: 22px 20px 22px 16px; }
+  .resp-cols { grid-template-columns: 1fr !important; }
+  .donut-wrap { flex-direction: column; align-items: center; text-align: center; gap: 16px; }
+  .donut { width: 150px; height: 150px; }
+  .legend2 { width: 100%; max-width: 320px; }
+}
+
+/* -------- ≤ 720px : phone -------- */
+@media (max-width: 720px) {
+
+  /* ===== App shell : single column, content takes full width ===== */
+  .app-shell,
+  html[data-sidebar="collapsed"] .app-shell {
+    grid-template-columns: 1fr !important;
+  }
+  .app-main {
+    padding: 14px 12px;
+    /* Bottom padding leaves room for the fixed bottom nav + iPhone safe area */
+    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+  .page-wrap { max-width: none; margin: 0; }
+
+  /* ===== Sidebar → fixed bottom navigation bar ===== */
+  .sidebar {
+    position: fixed;
+    inset: auto 0 0 0;      /* bottom: 0, full width */
+    top: auto;
+    height: auto;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 2px;
+    padding: 6px 4px;
+    padding-bottom: max(6px, env(safe-area-inset-bottom, 6px));
+    border-top: 1px solid var(--border);
+    border-inline-start: none;
+    z-index: 100;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    background:
+      linear-gradient(180deg,
+        color-mix(in oklab, var(--surface) 80%, transparent) 0%,
+        color-mix(in oklab, var(--surface) 96%, transparent) 100%);
+  }
+  html.theme-dark .sidebar {
+    background: linear-gradient(180deg, rgba(17,24,26,0.85) 0%, rgba(17,24,26,0.98) 100%);
+  }
+
+  /* Hide brand, section labels, footer chrome on mobile bottom nav */
+  .sidebar-brand,
+  .sidebar-section-label,
+  .sidebar-footer,
+  .sidebar-toggle {
+    display: none !important;
+  }
+
+  /* Nav items become tap-friendly tiles with icon-over-label */
+  .sidebar-item {
+    flex: 1 0 auto;
+    min-width: 60px;
+    min-height: 52px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    padding: 6px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    border-radius: 12px;
+    text-align: center;
+    position: relative;
+  }
+  .sidebar-item .sidebar-item-icon { width: 22px; height: 22px; }
+  .sidebar-item .sidebar-item-icon svg { width: 22px; height: 22px; }
+  .sidebar-item .sidebar-item-label {
+    display: block !important;     /* override the [collapsed] hide */
+    font-size: 10px;
+    line-height: 1.1;
+    max-width: 64px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sidebar-item.active::before { display: none; }   /* hide the side rail */
+  .sidebar-item.active {
+    background: var(--grad-primary);
+    color: white;
+  }
+  .sidebar-item .sidebar-item-count {
+    position: absolute;
+    top: 4px;
+    inset-inline-end: 10px;
+    margin: 0;
+    padding: 0 5px;
+    min-width: 16px;
+    height: 16px;
+    font-size: 9px;
+    border: none;
+    display: grid;
+    place-items: center;
+    background: var(--danger);
+    color: white;
+  }
+  .sidebar-item.active .sidebar-item-count {
+    background: rgba(255,255,255,0.28);
+  }
+
+  /* ===== Topbar header ===== */
+  .topbar2 { margin-bottom: 14px; gap: 10px; }
+  .topbar2-title { font-size: 22px; }
+  .topbar2-eyebrow { font-size: 10px; }
+  .topbar2-actions { flex-wrap: wrap; }
+
+  /* ===== Hero punch ===== */
+  .hero-punch { padding: 22px 18px; border-radius: 22px; min-height: auto; }
+  .hero-grid { gap: 18px; }
+  .hero-eyebrow { font-size: 11px; padding: 5px 10px; margin-bottom: 12px; }
+  .hero-timer { font-size: 48px; gap: 4px; }
+  .hero-timer .sec { font-size: 22px; }
+  .hero-sub { font-size: 12px; gap: 6px; margin-top: 8px; }
+  .hero-cta { min-width: 0 !important; gap: 10px; }
+  .punch-btn { padding: 14px 18px; font-size: 15px; border-radius: 14px; min-height: 50px; }
+  .location-seg2 button { padding: 9px 10px; font-size: 12px; }
+
+  /* ===== Stat cards ===== */
+  .stats3 { gap: 12px; }
+  .stat2 { padding: 18px 16px; border-radius: 18px; }
+  .stat2-value { font-size: 28px; }
+  .stat2-value .unit { font-size: 13px; }
+  .stat2-target { font-size: 11px; }
+  .stat2-bar { height: 7px; }
+  .stat2-diff { font-size: 11px; }
+
+  /* ===== Cards ===== */
+  .card2 { padding: 18px 14px; border-radius: 18px; }
+  .card2-title { margin-bottom: 14px; flex-wrap: wrap; }
+  .card2-title h3 { font-size: 15px; }
+
+  /* ===== Tables : keep horizontal scroll smooth ===== */
+  .table-wrap {
+    -webkit-overflow-scrolling: touch;
+    overflow-x: auto;
+    margin: 0 -6px;
+    padding: 0 6px;
+  }
+  .table2 { font-size: 13px; }
+  .table2 th, .table2 td { padding: 10px 8px; }
+  .table2 th { font-size: 10px; }
+  .icon-btn2 { width: 36px; height: 36px; }   /* tap-friendly */
+
+  /* ===== Pills slightly larger for legibility ===== */
+  .pill2 { font-size: 11px; padding: 3px 8px; }
+
+  /* ===== Forms ===== */
+  .form-row2 { grid-template-columns: 1fr !important; gap: 10px; margin-bottom: 12px; }
+  .field input, .field select {
+    padding: 12px 14px;
+    font-size: 16px;   /* >= 16px stops iOS Safari from zooming on focus */
+    min-height: 44px;
+  }
+  .field-label { font-size: 11px; }
+
+  /* Buttons in forms full-width */
+  .btn2 {
+    min-height: 44px;
+    padding: 11px 16px;
+  }
+
+  /* ===== Period nav touch sizes ===== */
+  .period-nav2 button { width: 36px; height: 36px; }
+  .period-nav2 .label { font-size: 12px; min-width: 100px; padding: 0 8px; }
+
+  /* ===== Heatmap : smaller cells, tighter gap ===== */
+  .heatmap { gap: 3px; padding: 8px 0; }
+  .heatmap-day { font-size: 9px; border-radius: 5px; }
+  .heatmap-day-tip { font-size: 10px; padding: 4px 7px; }
+  .heatmap-head span { font-size: 10px; }
+  .heatmap-legend { font-size: 10px; gap: 6px; }
+  .heatmap-legend .cell { width: 12px; height: 12px; }
+
+  /* ===== Donut already stacked above (≤900px); tighten further ===== */
+  .donut { width: 140px; height: 140px; }
+  .donut-center .big { font-size: 24px; }
+  .legend2 { gap: 10px; }
+  .legend2-text strong { font-size: 13px; }
+  .legend2-text span { font-size: 11px; }
+
+  /* ===== Quarterly rings ===== */
+  .q-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 12px; }
+  .q-card { padding: 16px 12px; border-radius: 16px; }
+  .q-card-ring { width: 96px; height: 96px; margin: 12px auto; }
+  .q-card-ring-center .big { font-size: 20px; }
+  .q-card-label { font-size: 10px; }
+  .q-card-months { font-size: 11px; }
+  .q-card-stats { font-size: 11px; }
+
+  /* ===== Days off ===== */
+  .leave-grid { grid-template-columns: 1fr !important; gap: 14px; }
+  .leave-stat { padding: 20px; border-radius: 18px; }
+  .leave-stat-value { font-size: 44px; }
+  .leave-stat-sub { font-size: 12px; }
+  .leave-row { padding: 12px; gap: 12px; border-radius: 12px; }
+  .leave-row .date { width: 42px; }
+  .leave-row .date .d { font-size: 18px; }
+  .leave-row .date .m { font-size: 10px; }
+  .leave-row .info strong { font-size: 14px; }
+  .leave-row .info span { font-size: 11px; }
+
+  /* ===== Account hero stacks vertically ===== */
+  .account-hero {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 22px 18px;
+    gap: 14px;
+    border-radius: 22px;
+  }
+  .account-avatar { width: 72px; height: 72px; font-size: 28px; border-radius: 22px; }
+  .account-info { text-align: center; }
+  .account-info h2 { font-size: 22px; }
+  .account-info .role { font-size: 12px; }
+  .account-info .stats {
+    justify-content: center;
+    gap: 14px;
+    margin-top: 8px;
+  }
+  .account-info .stats b { font-size: 13px; }
+
+  /* ===== Admin: weekday grid wraps on narrow ===== */
+  .admin-day-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 10px;
+  }
+
+  /* ===== Login ===== */
+  .login-shell { padding: 16px; }
+  .login-card2 { padding: 26px 22px; border-radius: 22px; }
+  .login-title2 { font-size: 22px; }
+  .login-mark { width: 56px; height: 56px; border-radius: 18px; }
+  .login-mark svg { width: 26px; height: 26px; }
+
+  /* ===== Toasts (so they don't sit under bottom nav) ===== */
+  .toast-stack {
+    bottom: calc(86px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+    right: 12px;
+  }
+  .toast { font-size: 12px; padding: 10px 14px; }
+
+  /* ===== Background orbs slightly weaker on mobile for legibility ===== */
+  .bg-orb { opacity: 0.35; }
+  html.theme-dark .bg-orb { opacity: 0.22; }
+}
+
+/* -------- ≤ 380px : very small phones -------- */
+@media (max-width: 380px) {
+  .topbar2-title { font-size: 20px; }
+  .hero-timer { font-size: 40px; }
+  .hero-timer .sec { font-size: 18px; }
+  .stat2-value { font-size: 24px; }
+  .leave-stat-value { font-size: 38px; }
+  .sidebar-item { min-width: 54px; padding: 6px 4px; }
+  .sidebar-item .sidebar-item-label { font-size: 9px; max-width: 54px; }
+  .q-grid { grid-template-columns: 1fr !important; }
+  .form-row2 .field input { font-size: 16px; }
+}

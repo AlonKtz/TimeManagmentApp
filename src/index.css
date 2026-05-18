@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap');
 @import './styles/bold-redesign.css';
+@import './styles/mobile.css';
 
 :root {
   /* Surfaces & text (light) */
