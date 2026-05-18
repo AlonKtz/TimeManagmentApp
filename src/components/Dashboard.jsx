@@ -75,6 +75,15 @@ export default function Dashboard({
   // Active punch metadata
   const punchStartMs = activePunch ? new Date(activePunch.start).getTime() : null;
 
+  // ── Target-reach forecast ──────────────────────────────────────────────
+  // While punched in, the moment the user will hit the daily target is:
+  //   punch_start + (target - hours already worked from earlier entries today)
+  // (independent of liveAdd — this stays stable as the timer ticks.)
+  const targetReachTime = (activePunch && todayTarget > 0)
+    ? new Date(punchStartMs + Math.max(0, (todayTarget - todayWorked)) * 3600000)
+    : null;
+  const targetAlreadyMet = todayTotal >= todayTarget && todayTarget > 0;
+
   return (
     <div>
       {/* ===== Top header ===== */}
@@ -131,6 +140,14 @@ export default function Dashboard({
                     <>
                       <span style={{ opacity: 0.6 }}>·</span>
                       היעד היומי: <b>{todayTarget.toFixed(1)} ש׳</b>
+                    </>
+                  )}
+                  {targetReachTime && (
+                    <>
+                      <span style={{ opacity: 0.6 }}>·</span>
+                      {targetAlreadyMet
+                        ? <>✓ השלמת את היעד היומי</>
+                        : <>הגעה לתקן היומי בשעה <b style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtTime24(targetReachTime)}</b></>}
                     </>
                   )}
                 </div>
