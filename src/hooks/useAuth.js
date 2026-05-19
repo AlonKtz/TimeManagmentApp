@@ -8,6 +8,7 @@ function normalizeProfile(p) {
   return {
     ...p,
     jobPercent: p.job_percent ?? 100,
+    customDailyHours: p.custom_daily_hours || null,   // {0:9,1:9,...} or null
     username: p.email,        // compat alias (shown in account/admin UI)
     status: 'active',         // all Supabase accounts are active
     twoFactorSecret: null,    // TOTP not used in Supabase version
@@ -178,6 +179,21 @@ export function useAuth() {
     }
   };
 
+  // ── Update custom per-weekday hours ──────────────────────────────────────
+  // value: { 0: 9, 1: 9, ..., 4: 8.5 } to override, or null to revert to company default
+  const updateCustomHours = async ({ userId, customDailyHours }) => {
+    try {
+      await sb.updateProfile(userId, { custom_daily_hours: customDailyHours });
+      setCurrentUser((u) => u ? {
+        ...u,
+        custom_daily_hours: customDailyHours,
+        customDailyHours: customDailyHours,
+      } : u);
+    } catch (e) {
+      console.error('[auth] updateCustomHours:', e);
+    }
+  };
+
   // No-ops kept for component interface compat (no pending approval in Supabase)
   const approveUser = () => {};
   const rejectUser  = () => {};
@@ -193,6 +209,7 @@ export function useAuth() {
     setUsers,
     deleteUser,
     updateJobPercent,
+    updateCustomHours,
     approveUser,
     rejectUser,
   };

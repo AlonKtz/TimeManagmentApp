@@ -21,9 +21,10 @@ export default function Dashboard({
   const [editingPunch, setEditingPunch]           = useState(false);
   const [location, setLocation]                   = useState(() => activePunch?.location || DEFAULT_LOCATION);
 
-  const isAdmin     = user.role === 'admin';
-  const jobPercent  = user.jobPercent ?? 100;
-  const userDaysOff = daysOff || [];
+  const isAdmin          = user.role === 'admin';
+  const jobPercent       = user.jobPercent ?? 100;
+  const customDailyHours = user.customDailyHours || null;
+  const userDaysOff      = daysOff || [];
 
   useEffect(() => {
     if (activePunch?.location) setLocation(activePunch.location);
@@ -38,7 +39,7 @@ export default function Dashboard({
 
   // ── Stats ───────────────────────────────────────────────────────────────
   const today        = new Date();
-  const todayTarget  = getPersonalDailyTarget(today, settings, jobPercent);
+  const todayTarget  = getPersonalDailyTarget(today, settings, jobPercent, customDailyHours);
   const todayWorked  = getWorkedOnDate(entries, today);
   const liveAdd      = activePunch ? sessionDuration({ start: activePunch.start }) : 0;
   const todayTotal   = todayWorked + liveAdd;
@@ -47,13 +48,13 @@ export default function Dashboard({
   displayedBase.setDate(displayedBase.getDate() + weekOffset * 7);
   const weekStart = startOfWeek(displayedBase);
   const weekEnd   = endOfWeek(displayedBase);
-  const weekStats = getPersonalRangeStats(entries, settings, weekStart, weekEnd, jobPercent);
+  const weekStats = getPersonalRangeStats(entries, settings, weekStart, weekEnd, jobPercent, customDailyHours);
   const isCurrentWeek = weekOffset === 0;
   const weekTotal = weekStats.worked + (isCurrentWeek ? liveAdd : 0);
 
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
   const monthEnd   = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-  const monthStats = getPersonalRangeStats(entries, settings, monthStart, monthEnd, jobPercent);
+  const monthStats = getPersonalRangeStats(entries, settings, monthStart, monthEnd, jobPercent, customDailyHours);
   const monthTotal = monthStats.worked + liveAdd;
 
   // ── Location split (current month) ──────────────────────────────────────
@@ -284,7 +285,7 @@ export default function Dashboard({
             </thead>
             <tbody>
               {daysInRange(weekStart, weekEnd).map((d) => {
-                const target      = getPersonalDailyTarget(d, settings, jobPercent);
+                const target      = getPersonalDailyTarget(d, settings, jobPercent, customDailyHours);
                 const isToday     = ymd(d) === ymd(today);
                 const worked      = getWorkedOnDate(entries, d) + (isToday ? liveAdd : 0);
                 const diff        = worked - target;

@@ -16,13 +16,14 @@ function getQuarterDates(year, q) {
 }
 
 export default function QuarterlyView({ user, entries, settings }) {
-  const year       = new Date().getFullYear();
-  const jobPercent = user.jobPercent ?? 100;
-  const currentQ   = Math.floor(new Date().getMonth() / 3);
+  const year             = new Date().getFullYear();
+  const jobPercent       = user.jobPercent ?? 100;
+  const customDailyHours = user.customDailyHours || null;
+  const currentQ         = Math.floor(new Date().getMonth() / 3);
 
   const rows = QUARTERS.map((q, idx) => {
     const { from, to } = getQuarterDates(year, q);
-    const stats = getPersonalRangeStats(entries, settings, from, to, jobPercent);
+    const stats = getPersonalRangeStats(entries, settings, from, to, jobPercent, customDailyHours);
     const pct   = stats.target > 0 ? (stats.worked / stats.target) * 100 : 0;
     const state = idx === currentQ ? 'current' : idx > currentQ ? 'future' : 'past';
     return { ...q, ...stats, pct, state };

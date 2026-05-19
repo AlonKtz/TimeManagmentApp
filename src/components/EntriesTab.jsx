@@ -96,7 +96,8 @@ export default function EntriesTab({ user, entries, setEntries, settings }) {
     .sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || '').localeCompare(a.createdAt || ''));
 
   const jobPercent = user.jobPercent ?? 100;
-  const monthStats = getPersonalRangeStats(userEntries, settings, viewStart, viewEnd, jobPercent);
+  const customDailyHours = user.customDailyHours || null;
+  const monthStats = getPersonalRangeStats(userEntries, settings, viewStart, viewEnd, jobPercent, customDailyHours);
   const liveHours  = mode === 'range' ? (timeStrToHours(endT) - timeStrToHours(startT)) : parseFloat(hours) || 0;
 
   return (

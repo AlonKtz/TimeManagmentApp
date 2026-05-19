@@ -352,7 +352,7 @@ export default function App() {
     // ── Add ───────────────────────────────────────────────────────────────
     for (const date of toAdd) {
       const d = new Date(date + 'T12:00:00'); // noon avoids DST edge cases
-      const dayHours = getPersonalDailyTarget(d, settingsRef.current, user.jobPercent ?? 100);
+      const dayHours = getPersonalDailyTarget(d, settingsRef.current, user.jobPercent ?? 100, user.customDailyHours || null);
       const entryId = 'dayoff_' + date + '_' + user.id.slice(0, 6);
       const currentEntries = entriesRef.current;
       if (!currentEntries.some((e) => e.date === date && isDayOffEntry(e))) {
@@ -489,7 +489,7 @@ export default function App() {
               />
             )}
             {tab === 'account' && (
-              <AccountSettings user={user} auth={auth} />
+              <AccountSettings user={user} auth={auth} settings={settings} />
             )}
             {tab === 'admin' && user.role === 'admin' && (
               <AdminSettings

@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { IPencil } from './icons';
+import { HEB_DAYS, DEFAULT_SETTINGS } from '../constants';
 
 const JOB_PRESETS = [
   { label: 'משרה מלאה',         sublabel: '100% — א׳–ד׳ 9 שעות, ה׳ 8.5 שעות', value: 100 },
@@ -7,12 +8,67 @@ const JOB_PRESETS = [
   { label: 'אחוז מותאם אישית',   sublabel: '',                                  value: null },
 ];
 
-export default function AccountSettings({ user, auth }) {
+// Compare two day-hours maps for equality. Treats {} / null as equal-to-defaults.
+function sameDays(a, b) {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  for (const k of [0, 1, 2, 3, 4]) {
+    if (Number(a[k] ?? 0) !== Number(b[k] ?? 0)) return false;
+  }
+  return true;
+}
+
+export default function AccountSettings({ user, auth, settings }) {
   const savedPct = user.jobPercent ?? 100;
   const isCustom = savedPct !== 100 && savedPct !== 50;
   const [selectedPreset, setSelectedPreset] = useState(isCustom ? null : savedPct);
   const [customPct, setCustomPct]           = useState(isCustom ? String(savedPct) : '');
   const [jobFlash, setJobFlash]             = useState('');
+
+  // ── Custom weekly hours (per-user) ────────────────────────────────────
+  const companyDefault = settings?.standardHours || DEFAULT_SETTINGS.standardHours;
+  const initialHours = user.customDailyHours || companyDefault;
+  const [hours, setHours] = useState(() => ({
+    0: initialHours[0] ?? 0,
+    1: initialHours[1] ?? 0,
+    2: initialHours[2] ?? 0,
+    3: initialHours[3] ?? 0,
+    4: initialHours[4] ?? 0,
+  }));
+  const [hoursFlash, setHoursFlash] = useState('');
+
+  const weeklySum = useMemo(() =>
+    [0, 1, 2, 3, 4].reduce((s, k) => s + (Number(hours[k]) || 0), 0),
+    [hours]
+  );
+
+  const matchesCompany = sameDays(hours, companyDefault);
+  const matchesSaved   = sameDays(hours, user.customDailyHours || companyDefault);
+
+  const updateDay = (dow, val) => {
+    const n = parseFloat(val);
+    setHours((h) => ({ ...h, [dow]: isNaN(n) ? 0 : Math.max(0, Math.min(24, n)) }));
+  };
+
+  const saveHours = async () => {
+    // Saving the company default → store null (use shared standard)
+    const toSave = matchesCompany ? null : { 0: hours[0], 1: hours[1], 2: hours[2], 3: hours[3], 4: hours[4] };
+    await auth.updateCustomHours({ userId: user.id, customDailyHours: toSave });
+    setHoursFlash(matchesCompany
+      ? 'חזרת לתקן החברה ✓'
+      : `שעות אישיות נשמרו (${weeklySum.toFixed(1)} ש׳/שבוע) ✓`);
+    setTimeout(() => setHoursFlash(''), 3000);
+  };
+
+  const resetToCompany = () => {
+    setHours({
+      0: companyDefault[0] ?? 0,
+      1: companyDefault[1] ?? 0,
+      2: companyDefault[2] ?? 0,
+      3: companyDefault[3] ?? 0,
+      4: companyDefault[4] ?? 0,
+    });
+  };
 
   const effectivePct = selectedPreset !== null ? selectedPreset : parseFloat(customPct) || 0;
 
@@ -146,6 +202,90 @@ export default function AccountSettings({ user, auth }) {
             style={savedPct === effectivePct ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
           >
             שמירת אחוזי משרה
+          </button>
+        </div>
+      </div>
+
+      {/* ===== Custom weekly hours (per-user override) ===== */}
+      <div className="card2" style={{ marginTop: 16 }}>
+        <div className="card2-title">
+          <h3>תקן שעות שבועי אישי</h3>
+          <span className="pill2 info">{weeklySum.toFixed(1)} ש׳ / שבוע</span>
+        </div>
+
+        {hoursFlash && (
+          <div style={{ background: 'var(--success-soft)', color: 'var(--success)', padding: '10px 14px', borderRadius: 10, marginBottom: 14, fontSize: 13, fontWeight: 600 }}>
+            ✓ {hoursFlash}
+          </div>
+        )}
+
+        <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+          הגדר שעות עבודה יומיות מותאמות אישית. ערכים אלה יחליפו את חישוב אחוזי המשרה
+          ויחושבו ביעד היומי שלך. חגים ימשיכו להשתמש בתקן החברה.
+        </div>
+
+        <div className="form-row2" style={{ marginBottom: 14 }}>
+          {[0, 1, 2, 3, 4].map((dow) => (
+            <div className="field" key={dow}>
+              <label className="field-label">יום {HEB_DAYS[dow]}</label>
+              <input
+                type="number" step="0.25" min="0" max="24"
+                value={hours[dow]}
+                onChange={(e) => updateDay(dow, e.target.value)}
+                style={{ textAlign: 'center', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div style={{
+          padding: '14px 16px',
+          background: 'var(--surface-2)',
+          border: '1px solid var(--border)',
+          borderRadius: 14,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 10,
+          marginBottom: 14,
+        }}>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              סך שעות שבועיות
+            </div>
+            <div style={{
+              fontSize: 26, fontWeight: 800, letterSpacing: '-0.02em',
+              color: 'var(--text)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.1,
+              marginTop: 2,
+            }}>
+              {weeklySum.toFixed(2)} <span style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 600 }}>ש׳</span>
+            </div>
+          </div>
+          {matchesCompany ? (
+            <span className="pill2 muted">תקן החברה</span>
+          ) : (
+            <span className="pill2 primary">מותאם אישית</span>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn2 ghost"
+            onClick={resetToCompany}
+            disabled={matchesCompany}
+            style={matchesCompany ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+          >
+            חזרה לתקן החברה
+          </button>
+          <button
+            type="button"
+            className="btn2 primary"
+            onClick={saveHours}
+            disabled={matchesSaved}
+            style={matchesSaved ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+          >
+            שמירה
           </button>
         </div>
       </div>

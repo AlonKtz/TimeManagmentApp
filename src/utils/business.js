@@ -35,18 +35,19 @@ export function getDailyTarget(date, settings) {
 }
 
 /**
- * Personal daily target — respects the user's job percentage (אחוזי משרה).
+ * Personal daily target — respects (in priority order):
+ *  1. customDailyHours[dow]   — per-user override; takes precedence over jobPercent
+ *  2. jobPercent              — admin standard scaled by user's part-time %
  *
  * Rules:
- *  • 100% (full time)  → use admin standard hours as-is (Sun-Wed 9h, Thu 8.5h).
- *  • < 100% (part time) → all weekdays equal: baseHours × (pct/100).
- *    The "base" is Sun's standard hours (typically 9h).
- *    Thursday gets no reduction because part-timers work uniform days.
- *  • Holidays / overrides → always scaled by (pct/100), rounded to ¼h.
- *  • Fri/Sat → always 0.
+ *  • Fri/Sat → always 0 (not a working day in Israel).
+ *  • Holiday / day_override → settings hours × jobPercent (custom hours don't apply).
+ *  • Weekday & customDailyHours[dow] is set → use that value verbatim.
+ *  • Weekday & no custom → company standard scaled by jobPercent.
+ *      - 100% (full time)  → standardHours[dow] as-is.
+ *      - < 100% (part time) → uniform Sun-Thu = standardHours[0] × pct.
  */
-export function getPersonalDailyTarget(date, settings, jobPercent = 100) {
-  // Days off are handled by auto-creating a time entry — target is unchanged.
+export function getPersonalDailyTarget(date, settings, jobPercent = 100, customDailyHours = null) {
   const pct = (jobPercent ?? 100) / 100;
   const dow = date.getDay();
 
@@ -54,8 +55,13 @@ export function getPersonalDailyTarget(date, settings, jobPercent = 100) {
 
   const info = getHolidayInfo(date, settings);
   if (info) {
-    // Scale holiday hours by job percent, round to nearest ¼h
+    // Holidays always use admin's holiday hours × jobPercent (custom doesn't apply)
     return Math.round(info.hours * pct * 4) / 4;
+  }
+
+  // User has custom weekday hours → use verbatim (jobPercent ignored for weekdays)
+  if (customDailyHours && customDailyHours[dow] != null && customDailyHours[dow] !== '') {
+    return Number(customDailyHours[dow]) || 0;
   }
 
   if (pct >= 1) {
@@ -85,12 +91,13 @@ export function getRangeStats(entries, settings, from, to) {
   return { target, worked, diff: worked - target };
 }
 
-/** Like getRangeStats but uses getPersonalDailyTarget for the user's job percent. */
-export function getPersonalRangeStats(entries, settings, from, to, jobPercent = 100) {
+/** Like getRangeStats but uses getPersonalDailyTarget for the user's job percent
+ *  and optional per-weekday customDailyHours override. */
+export function getPersonalRangeStats(entries, settings, from, to, jobPercent = 100, customDailyHours = null) {
   const days = daysInRange(from, to);
   let target = 0, worked = 0;
   for (const d of days) {
-    target += getPersonalDailyTarget(d, settings, jobPercent);
+    target += getPersonalDailyTarget(d, settings, jobPercent, customDailyHours);
     worked += getWorkedOnDate(entries, d);
   }
   return { target, worked, diff: worked - target };
