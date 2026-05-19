@@ -30,7 +30,7 @@ export default function LocationSplit({ office, home }) {
               <circle
                 className="ring-fg"
                 cx="70" cy="70" r={r}
-                stroke="#a3e635"
+                stroke="var(--accent-3)"
                 strokeDasharray={`${c - officeLen} ${c}`}
                 strokeDashoffset={`${-officeLen}`}
               />
@@ -64,13 +64,13 @@ export default function LocationSplit({ office, home }) {
           <div style={{ flex: 1 }}>
             <div className="legend2-text">
               <strong>
-                <span className="legend2-dot" style={{ background: '#a3e635' }} />{' '}
+                <span className="legend2-dot" style={{ background: 'var(--accent-3)' }} />{' '}
                 מהבית
               </strong>
               <span>{home.toFixed(1)} ש׳ · {Math.round(homePct)}%</span>
             </div>
             <div className="legend2-bar">
-              <div className="fill" style={{ width: (100 - officePctA) + '%', background: 'linear-gradient(90deg,#84cc16,#22d3ee)' }} />
+              <div className="fill" style={{ width: (100 - officePctA) + '%', background: 'linear-gradient(90deg,var(--accent-3),var(--accent-2))' }} />
             </div>
           </div>
         </div>

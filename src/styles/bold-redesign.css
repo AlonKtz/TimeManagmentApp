@@ -28,41 +28,42 @@
   --page-radius: 24px;
 }
 
-/* Dark theme overrides */
+/* Dark theme overrides — warm orange / amber palette */
 html.theme-dark {
-  --bg:            #0b0f0e;
-  --surface:       #11181a;
-  --surface-2:     #1a2326;
-  --border:        rgba(255,255,255,0.06);
-  --border-strong: rgba(255,255,255,0.12);
-  --text:          #ecfdf5;
-  --text-muted:    #94a3a0;
-  --text-soft:     #5a6764;
+  --bg:            #14100d;   /* warm near-black */
+  --surface:       #1f1814;
+  --surface-2:     #2a221c;
+  --border:        rgba(255,200,150,0.07);
+  --border-strong: rgba(255,200,150,0.14);
+  --text:          #fefbf6;
+  --text-muted:    #a89c8e;
+  --text-soft:     #5d544c;
 
-  --primary:       #2dd4bf;   /* teal-400 — pops on dark */
-  --primary-hover: #5eead4;
-  --primary-soft:  rgba(45,212,191,0.14);
-  --primary-glow:  rgba(45,212,191,0.55);
+  --primary:       #fb923c;   /* orange-400 — vibrant on warm dark */
+  --primary-hover: #fdba74;   /* orange-300 */
+  --primary-soft:  rgba(251,146,60,0.16);
+  --primary-glow:  rgba(251,146,60,0.55);
 
   --danger:        #f87171;
   --danger-soft:   rgba(248,113,113,0.14);
   --warning:       #fbbf24;
-  --warning-soft:  rgba(251,191,36,0.14);
-  --success:       #34d399;
-  --success-soft:  rgba(52,211,153,0.14);
+  --warning-soft:  rgba(251,191,36,0.16);
+  --success:       #4ade80;
+  --success-soft:  rgba(74,222,128,0.14);
   --info:          #60a5fa;
   --info-soft:     rgba(96,165,250,0.14);
 
-  --accent:        #2dd4bf;
-  --accent-2:      #22d3ee;
-  --accent-3:      #a3e635;
-  --grad-primary:  linear-gradient(135deg, #14b8a6 0%, #2dd4bf 50%, #22d3ee 100%);
-  --grad-bg-light: radial-gradient(1200px 800px at 90% -10%, rgba(20,184,166,0.22), transparent 60%),
-                   radial-gradient(900px 700px at 5% 90%, rgba(34,211,238,0.16), transparent 55%),
-                   radial-gradient(700px 500px at 50% 50%, rgba(163,230,53,0.06), transparent 60%);
+  --accent:        #fb923c;   /* orange */
+  --accent-2:      #fbbf24;   /* amber */
+  --accent-3:      #facc15;   /* yellow — for "home" donut + over-target */
+  --grad-primary:  linear-gradient(135deg, #ea580c 0%, #fb923c 50%, #fbbf24 100%);
+  --grad-success:  linear-gradient(135deg, #4ade80 0%, #facc15 100%);
+  --grad-bg-light: radial-gradient(1200px 800px at 90% -10%, rgba(251,146,60,0.22), transparent 60%),
+                   radial-gradient(900px 700px at 5% 90%, rgba(251,191,36,0.16), transparent 55%),
+                   radial-gradient(700px 500px at 50% 50%, rgba(253,186,116,0.06), transparent 60%);
   --shadow-soft:   0 1px 0 rgba(255,255,255,0.02), 0 10px 30px -10px rgba(0,0,0,0.6);
   --shadow-lift:   0 1px 0 rgba(255,255,255,0.03), 0 20px 50px -20px rgba(0,0,0,0.8);
-  --shadow-glow:   0 0 0 1px rgba(45,212,191,0.18), 0 30px 80px -20px rgba(45,212,191,0.4);
+  --shadow-glow:   0 0 0 1px rgba(251,146,60,0.18), 0 30px 80px -20px rgba(251,146,60,0.4);
 }
 
 /* ============================================================
@@ -123,6 +124,10 @@ a { color: inherit; text-decoration: none; }
 .bg-orb.o3 { width: 280px; height: 280px; top: 40%; left: 45%; background: radial-gradient(circle, #84cc16 0%, transparent 70%); animation: orb-float-c 24s ease-in-out infinite; opacity: 0.25; }
 html.theme-dark .bg-orb { opacity: 0.35; }
 html.theme-dark .bg-orb.o3 { opacity: 0.18; }
+/* Warm orbs for the dark (orange) theme */
+html.theme-dark .bg-orb.o1 { background: radial-gradient(circle, #fb923c 0%, transparent 70%); }
+html.theme-dark .bg-orb.o2 { background: radial-gradient(circle, #f59e0b 0%, transparent 70%); }
+html.theme-dark .bg-orb.o3 { background: radial-gradient(circle, #facc15 0%, transparent 70%); }
 
 @keyframes mesh-drift {
   0% { transform: translate3d(0,0,0) rotate(0deg); }
@@ -483,7 +488,14 @@ html[data-sidebar="collapsed"] .sidebar-item.active::before { display: none; }
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
 }
 html.theme-dark .hero-punch.idle {
-  background: linear-gradient(135deg, #0a0f10 0%, #1a2326 100%);
+  background: linear-gradient(135deg, #1a1410 0%, #2a2018 100%);
+}
+/* Warm orange highlights for the active hero in dark mode */
+html.theme-dark .hero-punch::after {
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255,255,255,0.14), transparent 40%),
+    radial-gradient(circle at 70% 80%, rgba(251,191,36,0.42), transparent 45%),
+    radial-gradient(circle at 90% 10%, rgba(252,204,21,0.45), transparent 50%);
 }
 
 @keyframes hero-pulse {
@@ -522,6 +534,17 @@ html.theme-dark .hero-punch.idle {
   animation: pulse-dot 1.6s ease-out infinite;
 }
 .hero-eyebrow .live-dot.idle { background: rgba(255,255,255,0.5); animation: none; }
+/* Dark theme: amber live-dot with matching pulse rings */
+html.theme-dark .hero-eyebrow .live-dot {
+  background: #facc15;
+  box-shadow: 0 0 0 0 rgba(252,204,21,0.6);
+  animation: pulse-dot-amber 1.6s ease-out infinite;
+}
+@keyframes pulse-dot-amber {
+  0%   { box-shadow: 0 0 0 0 rgba(252,204,21,0.7); }
+  70%  { box-shadow: 0 0 0 12px rgba(252,204,21,0); }
+  100% { box-shadow: 0 0 0 0 rgba(252,204,21,0); }
+}
 @keyframes pulse-dot {
   0% { box-shadow: 0 0 0 0 rgba(132,204,22,0.7); }
   70% { box-shadow: 0 0 0 12px rgba(132,204,22,0); }
@@ -590,7 +613,7 @@ html.theme-dark .hero-punch.idle {
   background: linear-gradient(180deg, rgba(255,255,255,0.25), transparent 50%);
   pointer-events: none;
 }
-.punch-btn.start { background: white; color: #0f766e; }
+.punch-btn.start { background: white; color: var(--primary); }
 .punch-btn.start:hover { transform: translateY(-2px); box-shadow: 0 16px 40px -10px rgba(0,0,0,0.4); }
 .punch-btn.stop { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; }
 .punch-btn.stop:hover { transform: translateY(-2px); box-shadow: 0 16px 40px -10px rgba(220,38,38,0.5); }
@@ -622,7 +645,7 @@ html.theme-dark .hero-punch.idle {
 .location-seg2 button:hover { color: white; }
 .location-seg2 button.active {
   background: white;
-  color: #0f766e;
+  color: var(--primary);
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 .location-seg2 button svg { width: 16px; height: 16px; }
