@@ -60,13 +60,20 @@ export default function AdminSettings({ settings, setSettings, users, currentUse
   };
 
   // Wrap an awaited setSettings call: shows a green success flash or a red
-  // failure flash that includes the underlying error message (e.g. RLS denial).
+  // failure flash that includes the underlying error message (e.g. RLS denial)
+  // AND the current user's role, so a "permission denied" failure makes the
+  // root cause (wrong role) obvious without devtools.
   const saveAnd = async (next, successMsg) => {
     const res = await setSettings(next);
     if (res?.ok) {
       showFlash(successMsg, 'success');
     } else {
-      showFlash(`שמירה נכשלה — ${res?.error || 'שגיאה לא ידועה'}`, 'error');
+      const isPermDenied = /row.level security|permission|policy|42501/i.test(res?.error || '');
+      const ctx = `(${currentUser?.role || 'unknown role'})`;
+      const hint = isPermDenied
+        ? `אין הרשאה לשמור ${ctx} — נדרשת הרשאת אדמין. צא והיכנס מחדש או פנה למנהל המערכת.`
+        : `שמירה נכשלה ${ctx} — ${res?.error || 'שגיאה לא ידועה'}`;
+      showFlash(hint, 'error');
     }
     return res;
   };
