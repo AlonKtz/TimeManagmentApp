@@ -34,7 +34,7 @@ export default function AdminSettings({ settings, setSettings, users, currentUse
   const [overrideHours, setOverrideHours] = useState('0');
   const [overrideNote, setOverrideNote]   = useState('');
   const [overrideType, setOverrideType]   = useState('vacation'); // vacation | half | short | custom
-  const [flash, setFlash]                 = useState('');
+  const [flash, setFlash]                 = useState({ msg: '', tone: 'success' });
   const [holidayFilter, setHolidayFilter] = useState('upcoming');
 
   // Quick-presets for company days. Picking one prefills hours + a sensible note.
@@ -54,62 +54,80 @@ export default function AdminSettings({ settings, setSettings, users, currentUse
   useEffect(() => setSh(settings.standardHours), [settings.standardHours]);
   useEffect(() => setHh(settings.holidayHours || DEFAULT_SETTINGS.holidayHours), [settings.holidayHours]);
 
-  const showFlash = (msg) => { setFlash(msg); setTimeout(() => setFlash(''), 2000); };
+  const showFlash = (msg, tone = 'success') => {
+    setFlash({ msg, tone });
+    setTimeout(() => setFlash((f) => (f.msg === msg ? { msg: '', tone } : f)), tone === 'error' ? 6000 : 2500);
+  };
+
+  // Wrap an awaited setSettings call: shows a green success flash or a red
+  // failure flash that includes the underlying error message (e.g. RLS denial).
+  const saveAnd = async (next, successMsg) => {
+    const res = await setSettings(next);
+    if (res?.ok) {
+      showFlash(successMsg, 'success');
+    } else {
+      showFlash(`שמירה נכשלה — ${res?.error || 'שגיאה לא ידועה'}`, 'error');
+    }
+    return res;
+  };
 
   const updateStandard = (dow, val) => {
     const n = parseFloat(val);
     setSh({ ...sh, [dow]: isNaN(n) ? 0 : n });
   };
-  const saveStandard = () => { setSettings({ ...settings, standardHours: sh }); showFlash('התקן השבועי נשמר'); };
+  const saveStandard = () => saveAnd({ ...settings, standardHours: sh }, 'התקן השבועי נשמר');
 
   const updateHoliday = (type, val) => {
     const n = parseFloat(val);
     setHh({ ...hh, [type]: isNaN(n) ? 0 : n });
   };
-  const saveHolidayHours = () => { setSettings({ ...settings, holidayHours: hh }); showFlash('שעות החגים נשמרו'); };
+  const saveHolidayHours = () => saveAnd({ ...settings, holidayHours: hh }, 'שעות החגים נשמרו');
 
   const toggleHolidayDisabled = (key) => {
     const disabled = settings.disabledHolidays || [];
     const next = disabled.includes(key) ? disabled.filter((k) => k !== key) : [...disabled, key];
-    setSettings({ ...settings, disabledHolidays: next });
+    return saveAnd(
+      { ...settings, disabledHolidays: next },
+      disabled.includes(key) ? 'החג הופעל מחדש' : 'החג בוטל'
+    );
   };
 
-  const addOverride = (e) => {
+  const addOverride = async (e) => {
     e.preventDefault();
     const n = parseFloat(overrideHours);
     if (isNaN(n) || n < 0 || n > 24) { alert('הזן מספר שעות תקין'); return; }
-    setSettings({
+    const res = await saveAnd({
       ...settings,
       overrides: {
         ...settings.overrides,
         [overrideDate]: { hours: n, note: overrideNote.trim() || (n === 0 ? 'חג' : 'חריג'), type: 'custom' },
       },
-    });
-    setOverrideNote(''); setOverrideHours('0');
-    showFlash('החריגה נוספה');
+    }, 'החריגה נוספה');
+    // Only reset form on actual success — keep values around if save failed
+    if (res?.ok) { setOverrideNote(''); setOverrideHours('0'); }
   };
 
   const removeOverride = (key) => {
     if (!confirm('להסיר את החריגה?')) return;
     const { [key]: _, ...rest } = settings.overrides;
-    setSettings({ ...settings, overrides: rest });
+    return saveAnd({ ...settings, overrides: rest }, 'החריגה הוסרה');
   };
 
   // Per-date override for an Israeli holiday — keyed by date in the same
   // overrides map. getHolidayInfo() in business.js already checks overrides
   // before falling back to the type default, so this just works app-wide.
-  const setHolidayOverride = (date, hours, note, type) => {
-    setSettings({
+  const setHolidayOverride = (date, hours, note, type) =>
+    saveAnd({
       ...settings,
       overrides: {
         ...(settings.overrides || {}),
         [date]: { hours, note: note || '', type: type || 'custom' },
       },
-    });
-  };
+    }, 'שעות החג נשמרו');
+
   const clearHolidayOverride = (date) => {
     const { [date]: _, ...rest } = settings.overrides || {};
-    setSettings({ ...settings, overrides: rest });
+    return saveAnd({ ...settings, overrides: rest }, 'חזרה לברירת מחדל');
   };
 
   const removeUser = async (userId) => {
@@ -140,9 +158,22 @@ export default function AdminSettings({ settings, setSettings, users, currentUse
         </div>
       </div>
 
-      {flash && (
-        <div style={{ background: 'var(--success-soft)', color: 'var(--success)', padding: '10px 14px', borderRadius: 10, marginBottom: 14, fontSize: 13, fontWeight: 600 }}>
-          ✓ {flash}
+      {flash.msg && (
+        <div style={{
+          background: flash.tone === 'error' ? 'var(--danger-soft)' : 'var(--success-soft)',
+          color:      flash.tone === 'error' ? 'var(--danger)'      : 'var(--success)',
+          border:    `1px solid ${flash.tone === 'error' ? 'var(--danger)' : 'var(--success)'}`,
+          padding: '10px 14px',
+          borderRadius: 10,
+          marginBottom: 14,
+          fontSize: 13,
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}>
+          <span>{flash.tone === 'error' ? '⚠️' : '✓'}</span>
+          <span style={{ flex: 1 }}>{flash.msg}</span>
         </div>
       )}
 

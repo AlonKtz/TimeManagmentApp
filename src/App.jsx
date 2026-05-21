@@ -299,8 +299,12 @@ export default function App() {
   };
 
   // ── Settings save ────────────────────────────────────────────────────────
+  // Returns { ok: true } on success, { ok: false, error } on any failure.
+  // Self-heals the UI by calling loadSettings() in both paths — so the local
+  // state matches what's actually in Postgres, never showing optimistic
+  // changes that the server rejected.
   const setSettings = async (next) => {
-    setSettingsState(next);
+    setSettingsState(next); // optimistic — overridden by loadSettings() below
     try {
       await sb.upsert(
         'settings',
@@ -330,8 +334,15 @@ export default function App() {
       for (const row of desiredRows) {
         await sb.upsert('day_overrides', row, 'date');
       }
+
+      // Confirm DB state — picks up any race-condition merges
+      await loadSettings();
+      return { ok: true };
     } catch (e) {
       console.error('[app] settings save:', e);
+      // Revert UI to whatever Postgres actually holds
+      try { await loadSettings(); } catch {}
+      return { ok: false, error: e?.message || String(e) };
     }
   };
 
