@@ -320,11 +320,17 @@ export default function App() {
       const existing = await sb.select('day_overrides', 'select=date');
       const existingDates = existing.map((r) => r.date);
 
+      // Build desired rows — overrides TAKE PRECEDENCE over disabledHolidays
+      // for the same date. (Otherwise an override on a date that's also in
+      // disabledHolidays would be overwritten by the disabled row on the
+      // second upsert pass, and the user's edit would silently revert.)
+      const overrideDates = new Set(Object.keys(next.overrides || {}));
       const desiredRows = [];
       for (const [date, ov] of Object.entries(next.overrides || {})) {
         desiredRows.push({ date, hours: ov.hours, note: ov.note || '', type: ov.type || 'custom', disabled: false });
       }
       for (const date of next.disabledHolidays || []) {
+        if (overrideDates.has(date)) continue;  // override wins
         desiredRows.push({ date, hours: 0, note: '', type: 'disabled', disabled: true });
       }
 
