@@ -143,56 +143,84 @@ jobs:
           print(f"run_fail={run_fail}")
           PYEOF
 
-      # ── 3. DB sanity (lightweight — just row counts) ──────────────────────
+      # ── 3. DB sanity: server-side count via PostgREST count=exact ─────────
+      #     Returns the actual row count without pulling every row,
+      #     surfaces ERR loudly if the service_role key is missing/invalid,
+      #     counts days-off from time_entries (note='יום חופש'),
+      #     and adds an active-in-last-7-days metric using last_active_at.
       - name: DB sanity check
         id: db
         env:
           SUPABASE_URL: https://yxmbammlzweasjvpouqn.supabase.co
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_KEY:  ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
-          curl -sf \
-            "$SUPABASE_URL/rest/v1/profiles?select=id,status" \
-            -H "apikey: $SUPABASE_SERVICE_KEY" \
-            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
-            > /tmp/db_profiles.json || echo '[]' > /tmp/db_profiles.json
+          if [ -z "$SUPABASE_KEY" ]; then
+            echo "::warning::SUPABASE_SERVICE_KEY secret is missing — DB counts will show ERR"
+            {
+              echo "db_ok=false"
+              echo "err_reason=missing service_role key (add SUPABASE_SERVICE_KEY in repo secrets)"
+              echo "total_users=ERR"
+              echo "active_7d=ERR"
+              echo "pending=ERR"
+              echo "total_entries=ERR"
+              echo "total_daysoff=ERR"
+            } >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
-          curl -sf \
-            "$SUPABASE_URL/rest/v1/time_entries?select=id" \
-            -H "apikey: $SUPABASE_SERVICE_KEY" \
-            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
-            > /tmp/db_entries.json || echo '[]' > /tmp/db_entries.json
+          # Fetch one row count via PostgREST's exact-count Content-Range header
+          # (Range: 0-0 → return zero data rows; count=exact → still get total in header).
+          # Echoes the integer count, or "ERR" on non-200.
+          sb_count() {
+            local table="$1" filter="$2"
+            local url="$SUPABASE_URL/rest/v1/$table?select=id"
+            [ -n "$filter" ] && url="$url&$filter"
+            local out
+            out=$(curl -sI "$url" \
+              -H "apikey: $SUPABASE_KEY" \
+              -H "Authorization: Bearer $SUPABASE_KEY" \
+              -H "Prefer: count=exact" \
+              -H "Range: 0-0" \
+              -w "STATUS:%{http_code}")
+            local status total
+            status=$(echo "$out" | grep -o 'STATUS:[0-9]*' | cut -d: -f2)
+            total=$(echo "$out" | grep -i '^content-range:' | tr -d '\r' \
+                    | awk -F'/' '{print $2}' | xargs)
+            if [ "$status" = "200" ] && [ -n "$total" ] && [ "$total" != "*" ]; then
+              echo "$total"
+            else
+              echo "ERR"
+            fi
+          }
 
-          curl -sf \
-            "$SUPABASE_URL/rest/v1/days_off?select=id" \
-            -H "apikey: $SUPABASE_SERVICE_KEY" \
-            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
-            > /tmp/db_daysoff.json || echo '[]' > /tmp/db_daysoff.json
+          USERS=$(sb_count profiles)
+          PENDING=$(sb_count profiles "status=eq.pending")
+          ENTRIES=$(sb_count time_entries)
 
-          python3 << 'PYEOF' >> $GITHUB_OUTPUT
-          import json
+          # Days off now live in time_entries with note='יום חופש' (no more days_off table)
+          DAYOFF_NOTE=$(python3 -c "import urllib.parse; print(urllib.parse.quote('יום חופש'))")
+          DAYSOFF=$(sb_count time_entries "note=eq.$DAYOFF_NOTE")
 
-          def load(p):
-              try:
-                  d = json.load(open(p))
-                  return d if isinstance(d, list) else None
-              except: return None
+          # Active-in-last-7-days from profiles.last_active_at
+          SEVEN_DAYS_AGO=$(python3 -c "from datetime import datetime, timedelta, timezone; print((datetime.now(timezone.utc) - timedelta(days=7)).isoformat())")
+          ACTIVE=$(sb_count profiles "last_active_at=gte.$SEVEN_DAYS_AGO")
 
-          profiles = load('/tmp/db_profiles.json')
-          entries  = load('/tmp/db_entries.json')
-          daysoff  = load('/tmp/db_daysoff.json')
+          DB_OK=true
+          ERR_REASON=
+          if [ "$USERS" = "ERR" ] || [ "$ENTRIES" = "ERR" ]; then
+            DB_OK=false
+            ERR_REASON="service_role key invalid or DB unreachable"
+          fi
 
-          db_ok         = all(x is not None for x in [profiles, entries, daysoff])
-          total_users   = len(profiles) if profiles is not None else 'ERR'
-          pending       = sum(1 for u in (profiles or []) if u.get('status') == 'pending')
-          total_entries = len(entries)  if entries  is not None else 'ERR'
-          total_daysoff = len(daysoff)  if daysoff  is not None else 'ERR'
-
-          print(f"db_ok={db_ok}")
-          print(f"total_users={total_users}")
-          print(f"pending={pending}")
-          print(f"total_entries={total_entries}")
-          print(f"total_daysoff={total_daysoff}")
-          PYEOF
+          {
+            echo "db_ok=$DB_OK"
+            echo "err_reason=$ERR_REASON"
+            echo "total_users=$USERS"
+            echo "active_7d=$ACTIVE"
+            echo "pending=$PENDING"
+            echo "total_entries=$ENTRIES"
+            echo "total_daysoff=$DAYSOFF"
+          } >> $GITHUB_OUTPUT
 
       # ── 4. Send email ──────────────────────────────────────────────────────
       - name: Send email summary
@@ -218,7 +246,9 @@ jobs:
           RUN_PASS:         ${{ steps.repo.outputs.run_pass }}
           RUN_FAIL:         ${{ steps.repo.outputs.run_fail }}
           DB_OK:            ${{ steps.db.outputs.db_ok }}
+          ERR_REASON:       ${{ steps.db.outputs.err_reason }}
           TOTAL_USERS:      ${{ steps.db.outputs.total_users }}
+          ACTIVE_7D:        ${{ steps.db.outputs.active_7d }}
           PENDING:          ${{ steps.db.outputs.pending }}
           TOTAL_ENTRIES:    ${{ steps.db.outputs.total_entries }}
           TOTAL_DAYSOFF:    ${{ steps.db.outputs.total_daysoff }}
@@ -229,19 +259,40 @@ jobs:
           def v(k): return os.environ.get(k, 'N/A')
 
           app_ok    = v('APP_OK') == 'true'
-          db_ok     = v('DB_OK') == 'True'
+          db_ok     = v('DB_OK').lower() == 'true'   # bash echoes lowercase
           today     = __import__('datetime').date.today().strftime('%d/%m/%Y')
 
           hdr_color = '#0f766e' if app_ok else '#dc2626'
           app_badge = '✅ LIVE' if app_ok else '🔴 DOWN'
           db_badge  = '✅ OK'   if db_ok  else '🔴 ERR'
 
+          # Wrap "ERR" in red, leave everything else plain
+          def num(val):
+              if str(val) == 'ERR':
+                  return '<span style="color:#dc2626;font-weight:700">ERR</span>'
+              return str(val)
+
           pending = v('PENDING')
           pending_badge = (
               f'<span style="background:#fee2e2;color:#dc2626;padding:1px 7px;'
               f'border-radius:8px;font-weight:700">{pending}</span>'
-              if pending not in ('0','N/A') else pending
+              if pending not in ('0','N/A','ERR') else num(pending)
           )
+
+          # Red banner shown right under the header when DB read failed
+          err_reason = v('ERR_REASON')
+          err_banner = ''
+          if err_reason and err_reason not in ('N/A', ''):
+              err_banner = (
+                  f'<table width="100%" style="background:#fee2e2;border:1px solid #fca5a5;'
+                  f'border-radius:10px;margin-bottom:14px;border-collapse:collapse">'
+                  f'<tr><td style="padding:14px 18px">'
+                  f'<div style="font-size:11px;color:#dc2626;font-weight:700;'
+                  f'text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">'
+                  f'⚠️ DB read error</div>'
+                  f'<div style="font-size:13px;color:#7f1d1d">{err_reason}</div>'
+                  f'</td></tr></table>'
+              )
 
           deploy_synced = v('DEPLOY_LAG') == 'up to date'
           deploy_color  = '#16a34a' if deploy_synced else '#d97706'
@@ -306,13 +357,15 @@ jobs:
               </td></tr>
             </table>
 
+            {err_banner}
+
             <!-- KPI row -->
             <table width="100%" style="border-collapse:collapse;margin-bottom:14px">
               <tr>
                 {kpi(f"{v('BUNDLE_KB')} KB", "Bundle size", "#1c1917", v('ENCODING'))}
                 {kpi(f"{v('RESPONSE_MS')}ms", "Response time", "#2563eb")}
                 {kpi(f"{v('RUN_PASS')}/{int(v('RUN_PASS') or 0)+int(v('RUN_FAIL') or 0)}", "CI pass rate", ci_color, "last 10 runs")}
-                {kpi(f"{v('TOTAL_USERS')}", "DB users", "#7c3aed", f"{pending_badge} pending" if pending not in ('0','N/A') else "")}
+                {kpi(num(v('TOTAL_USERS')), "DB users", "#dc2626" if v('TOTAL_USERS') == 'ERR' else "#7c3aed", f"{num(v('ACTIVE_7D'))} active in 7d" if v('ACTIVE_7D') != 'N/A' else "")}
               </tr>
             </table>
 
@@ -350,10 +403,11 @@ jobs:
                 </td>
                 <td width="49%" style="vertical-align:top;padding-right:7px">
                   {card("🗄️ Database", [
-                      ("Users", v("TOTAL_USERS"), False),
+                      ("Users", num(v("TOTAL_USERS")), False),
+                      ("Active (last 7 days)", num(v("ACTIVE_7D")), True),
                       ("Pending approval", pending_badge, False),
-                      ("Time entries", v("TOTAL_ENTRIES"), False),
-                      ("Days-off records", v("TOTAL_DAYSOFF"), False),
+                      ("Time entries", num(v("TOTAL_ENTRIES")), False),
+                      ("Days off (יום חופש)", num(v("TOTAL_DAYSOFF")), False),
                   ])}
                 </td>
               </tr>
