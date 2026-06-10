@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { HEB_DAYS, HEB_MONTHS, DEFAULT_LOCATION } from '../constants';
 import { ymd, parseYmd, fmtHours, timeStrToHours } from '../utils/date';
-import { getPersonalRangeStats } from '../utils/business';
+import { getPersonalRangeStats, isDayOffEntry } from '../utils/business';
 import Time24Input from './Time24Input';
 import {
   IHome, IOffice, IPencil, ITrash, IPlus, IChevronL, IChevronR,
@@ -44,6 +44,7 @@ export default function EntriesTab({ user, entries, setEntries, settings }) {
     }
 
     const userEntries = entries[user.id] || [];
+    const original = editingId ? userEntries.find((x) => x.id === editingId) : null;
     const newEntry = {
       id: editingId || 'e_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
       date,
@@ -51,9 +52,8 @@ export default function EntriesTab({ user, entries, setEntries, settings }) {
       start, end,
       note: note.trim(),
       mode, location,
-      createdAt: editingId
-        ? (userEntries.find((x) => x.id === editingId)?.createdAt || new Date().toISOString())
-        : new Date().toISOString(),
+      viaPunch: original?.viaPunch || false,
+      createdAt: original?.createdAt || new Date().toISOString(),
     };
     const next = editingId
       ? userEntries.map((x) => x.id === editingId ? newEntry : x)
@@ -233,15 +233,19 @@ export default function EntriesTab({ user, entries, setEntries, settings }) {
       <div className="card2">
         <div className="row-between" style={{ marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
           <div className="period-nav2">
-            <button onClick={() => setMonthOffset((o) => o + 1)} disabled={monthOffset >= 0}
-                    style={monthOffset >= 0 ? { opacity: 0.3, cursor: 'not-allowed' } : {}}
-                    aria-label="חודש הבא">
+            <button onClick={() => setMonthOffset((o) => o + 1)} aria-label="חודש הבא" type="button">
               <IChevronL width="14" height="14" />
             </button>
             <div className="label">{HEB_MONTHS[viewDate.getMonth()]} {viewDate.getFullYear()}</div>
-            <button onClick={() => setMonthOffset((o) => o - 1)} aria-label="חודש קודם">
+            <button onClick={() => setMonthOffset((o) => o - 1)} aria-label="חודש קודם" type="button">
               <IChevronR width="14" height="14" />
             </button>
+            {monthOffset !== 0 && (
+              <button onClick={() => setMonthOffset(0)} title="חזרה לחודש הנוכחי" type="button"
+                      style={{ width: 'auto', padding: '0 10px', fontSize: 12 }}>
+                היום
+              </button>
+            )}
           </div>
 
           <div className="row" style={{ gap: 18 }}>
@@ -283,7 +287,7 @@ export default function EntriesTab({ user, entries, setEntries, settings }) {
               <tbody>
                 {monthEntries.map((e) => {
                   const d = parseYmd(e.date);
-                  const isDayOff = e.mode === 'dayoff' || e.note === 'יום חופש' || (e.id && e.id.startsWith('dayoff_'));
+                  const isDayOff = isDayOffEntry(e);
                   return (
                     <tr key={e.id} style={isDayOff ? { background: 'color-mix(in oklab, var(--warning-soft) 30%, transparent)' } : {}}>
                       <td>{d.getDate()}.{d.getMonth() + 1}.{d.getFullYear()}</td>

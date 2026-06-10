@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { DEFAULT_SETTINGS, DEFAULT_LOCATION } from './constants';
 import { ymd, fmtTime24, diffHours } from './utils/date';
 import { loadPunch, savePunch } from './utils/storage';
-import { getPersonalDailyTarget } from './utils/business';
+import { getPersonalDailyTarget, isDayOffEntry, DAYOFF_NOTE } from './utils/business';
 import sb from './lib/supabase';
 import { touchLastActive } from './lib/activity';
 import { useAuth } from './hooks/useAuth';
@@ -16,14 +16,6 @@ import QuarterlyView from './components/QuarterlyView';
 import Sidebar from './components/Sidebar';
 import MeshBackground from './components/MeshBackground';
 import GradDefs from './components/GradDefs';
-
-// Marker note used to identify a vacation-day entry.
-// Use a literal Hebrew prefix that survives any DB CHECK constraint on `mode`.
-const DAYOFF_NOTE = 'יום חופש';
-
-function isDayOffEntry(e) {
-  return e.mode === 'dayoff' || e.note === DAYOFF_NOTE || (e.id && e.id.startsWith('dayoff_'));
-}
 
 // Convert DB time_entries row → app entry format
 function normalizeEntry(r) {

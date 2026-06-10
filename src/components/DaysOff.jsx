@@ -39,6 +39,9 @@ export default function DaysOff({ userId, daysOff, setDaysOff, jobPercent }) {
     if (!date) { alert('בחר תאריך'); return; }
     if (userDaysOff.includes(date)) { alert('יום זה כבר קיים ברשימת ימי החופשה'); return; }
     setDaysOff({ ...daysOff, [userId]: [...userDaysOff, date] });
+    // Jump the month list to the added date so it's immediately visible
+    const dt = parseYmd(date);
+    setMonthOffset((dt.getFullYear() - now.getFullYear()) * 12 + (dt.getMonth() - now.getMonth()));
     setFlash('יום חופש נוסף');
     setTimeout(() => setFlash(''), 2000);
   };
@@ -104,16 +107,19 @@ export default function DaysOff({ userId, daysOff, setDaysOff, jobPercent }) {
         <div className="card2-title">
           <h3>ימים בחודש {HEB_MONTHS[viewMonth]} {viewYear}</h3>
           <div className="period-nav2">
-            <button onClick={() => setMonthOffset((o) => o + 1)}
-                    disabled={monthOffset >= 0}
-                    style={monthOffset >= 0 ? { opacity: 0.3, cursor: 'not-allowed' } : {}}
-                    aria-label="חודש הבא">
+            <button onClick={() => setMonthOffset((o) => o + 1)} aria-label="חודש הבא" type="button">
               <IChevronL width="14" height="14" />
             </button>
             <div className="label">{HEB_MONTHS[viewMonth]} {viewYear}</div>
-            <button onClick={() => setMonthOffset((o) => o - 1)} aria-label="חודש קודם">
+            <button onClick={() => setMonthOffset((o) => o - 1)} aria-label="חודש קודם" type="button">
               <IChevronR width="14" height="14" />
             </button>
+            {monthOffset !== 0 && (
+              <button onClick={() => setMonthOffset(0)} title="חזרה לחודש הנוכחי" type="button"
+                      style={{ width: 'auto', padding: '0 10px', fontSize: 12 }}>
+                היום
+              </button>
+            )}
           </div>
         </div>
 

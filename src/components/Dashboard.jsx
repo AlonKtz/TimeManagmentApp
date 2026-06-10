@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { HEB_DAYS, HEB_MONTHS, DEFAULT_LOCATION } from '../constants';
 import { ymd, fmtHours, fmtTime24, startOfWeek, endOfWeek, daysInRange, sessionDuration } from '../utils/date';
-import { getPersonalDailyTarget, getWorkedOnDate, getPersonalRangeStats, getHolidayInfo } from '../utils/business';
+import { getPersonalDailyTarget, getWorkedOnDate, getPersonalRangeStats, getHolidayInfo, isDayOffEntry } from '../utils/business';
 import PunchEditModal from './PunchEditModal';
 import TargetEditorModal from './TargetEditorModal';
 import LiveTimer from './LiveTimer';
@@ -60,7 +60,7 @@ export default function Dashboard({
   // ── Location split (current month) ──────────────────────────────────────
   const locSplit = entries
     .filter((e) => {
-      if (e.mode === 'dayoff' || e.note === 'יום חופש') return false;
+      if (isDayOffEntry(e)) return false;
       const d = e.date && new Date(e.date + 'T12:00:00');
       return d && d >= monthStart && d <= monthEnd;
     })

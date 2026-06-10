@@ -1,6 +1,14 @@
 import { ISRAELI_HOLIDAYS, HOLIDAY_TYPES } from '../constants';
 import { ymd, daysInRange } from './date';
 
+// Marker note used to identify a vacation-day entry.
+// Use a literal Hebrew prefix that survives any DB CHECK constraint on `mode`.
+export const DAYOFF_NOTE = 'יום חופש';
+
+export function isDayOffEntry(e) {
+  return e.mode === 'dayoff' || e.note === DAYOFF_NOTE || (e.id && e.id.startsWith('dayoff_'));
+}
+
 export function hashPwd(pwd) {
   let h = 0;
   for (let i = 0; i < pwd.length; i++) {
