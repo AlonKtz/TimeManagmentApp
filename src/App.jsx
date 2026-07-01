@@ -5,6 +5,7 @@ import { loadPunch, savePunch } from './utils/storage';
 import { getPersonalDailyTarget, isDayOffEntry, leaveKindOf, LEAVE_TYPES } from './utils/business';
 import sb from './lib/supabase';
 import { touchLastActive } from './lib/activity';
+import { startUpdateChecker, reloadToLatest } from './lib/updater';
 import { useAuth } from './hooks/useAuth';
 import LoginScreen from './components/LoginScreen';
 import Dashboard from './components/Dashboard';
@@ -44,6 +45,7 @@ export default function App() {
   // leave kept as { [userId]: [{ date, kind }] } for DaysOff + Dashboard display
   const [daysOff, setDaysOffState] = useState({});
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [updateBuildId, setUpdateBuildId] = useState(null); // set when a newer deploy is live
 
   // Refs to avoid stale closures inside async callbacks
   const entriesRef  = useRef([]);
@@ -54,6 +56,10 @@ export default function App() {
   useEffect(() => { settingsRef.current = settings; }, [settings]);
 
   const user = auth.currentUser;
+
+  // ── Self-updater: detect when a newer build is deployed ──────────────────
+  // Runs regardless of auth so even the login screen can pick up new versions.
+  useEffect(() => startUpdateChecker(setUpdateBuildId), []);
 
   // ── Load all data when user logs in ─────────────────────────────────────
   useEffect(() => {
@@ -446,7 +452,12 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginScreen auth={auth} />;
+    return (
+      <>
+        {updateBuildId && <UpdateBanner onReload={() => reloadToLatest(updateBuildId)} />}
+        <LoginScreen auth={auth} />
+      </>
+    );
   }
 
   if (!dataLoaded) {
@@ -460,6 +471,7 @@ export default function App() {
 
   return (
     <>
+      {updateBuildId && <UpdateBanner onReload={() => reloadToLatest(updateBuildId)} />}
       <MeshBackground />
       <GradDefs />
       <div className="app-shell">
@@ -527,6 +539,53 @@ export default function App() {
         />
       </div>
     </>
+  );
+}
+
+function UpdateBanner({ onReload }) {
+  return (
+    <div
+      role="status"
+      style={{
+        position: 'fixed',
+        insetInlineStart: '50%',
+        transform: 'translateX(50%)',
+        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)',
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        maxWidth: 'calc(100vw - 32px)',
+        padding: '10px 12px 10px 16px',
+        borderRadius: 999,
+        background: 'var(--primary, #0f766e)',
+        color: '#fff',
+        boxShadow: '0 8px 28px rgba(0,0,0,0.28)',
+        fontSize: 13,
+        fontWeight: 600,
+        animation: 'toastIn 0.35s ease',
+      }}
+    >
+      <span>גרסה חדשה זמינה</span>
+      <button
+        type="button"
+        onClick={onReload}
+        style={{
+          background: '#fff',
+          color: 'var(--primary, #0f766e)',
+          border: 'none',
+          borderRadius: 999,
+          padding: '6px 14px',
+          cursor: 'pointer',
+          fontSize: 13,
+          fontWeight: 700,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        רענון
+      </button>
+      <style>{`@keyframes toastIn { from { opacity: 0; transform: translate(50%, 12px); } to { opacity: 1; transform: translate(50%, 0); } }`}</style>
+    </div>
   );
 }
 
