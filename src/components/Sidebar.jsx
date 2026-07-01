@@ -152,6 +152,33 @@ export default function Sidebar({ tab, setTab, user, onLogout, working, pendingC
           </div>
         </div>
 
+        {/* Prominent install CTA — top of the sidebar, inline-styled so no
+            stylesheet override can flatten or hide it. Only when not installed. */}
+        {canInstall && (
+          <button
+            type="button"
+            onClick={handleInstall}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              width: '100%', textAlign: 'start',
+              margin: '10px 0 2px', padding: '12px 14px',
+              borderRadius: 12,
+              border: '1.5px solid var(--primary, #0f766e)',
+              background: 'var(--primary-soft, rgba(15,118,110,0.14))',
+              color: 'var(--primary, #0f766e)',
+              cursor: 'pointer', font: 'inherit',
+            }}
+          >
+            <span style={{ display: 'grid', placeItems: 'center', flex: '0 0 auto' }}>
+              <IAddHome width="20" height="20" />
+            </span>
+            <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
+              <strong style={{ fontSize: 14, fontWeight: 700 }}>הוסף למסך הבית</strong>
+              <small style={{ fontSize: 11, opacity: 0.8 }}>גישה מהירה כמו אפליקציה</small>
+            </span>
+          </button>
+        )}
+
         <div className="sidebar-section-label">ניווט</div>
         {nav.map(({ id, label, Icon, count }) => (
           <button
@@ -178,18 +205,6 @@ export default function Sidebar({ tab, setTab, user, onLogout, working, pendingC
             >
               <span className="sidebar-item-icon"><IRefresh /></span>
               <span className="sidebar-item-label">גרסה חדשה — רענן</span>
-            </button>
-          )}
-          {canInstall && (
-            <button
-              className="sidebar-item"
-              onClick={handleInstall}
-              title="הוסף למסך הבית"
-              type="button"
-              style={{ marginBottom: 4 }}
-            >
-              <span className="sidebar-item-icon"><IAddHome /></span>
-              <span className="sidebar-item-label">הוסף למסך הבית</span>
             </button>
           )}
           <button
