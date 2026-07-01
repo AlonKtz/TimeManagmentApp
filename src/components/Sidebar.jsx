@@ -92,7 +92,6 @@ export default function Sidebar({ tab, setTab, user, onLogout, working, pendingC
         onClick={() => setMobileOpen(true)}
         aria-label={updateAvailable ? 'פתח תפריט — גרסה חדשה זמינה' : 'פתח תפריט'}
         type="button"
-        style={{ position: 'relative' }}
       >
         <IMenu />
         {updateAvailable && (
