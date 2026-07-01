@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "exceljs": "^4.4.0",
     "localforage": "^1.10.0",
     "otpauth": "^9.5.0",
     "qrcode": "^1.5.4",

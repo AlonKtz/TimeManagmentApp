@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { HEB_DAYS, HEB_MONTHS, DEFAULT_LOCATION } from '../constants';
 import { ymd, parseYmd, fmtHours, timeStrToHours } from '../utils/date';
-import { getPersonalRangeStats, isDayOffEntry } from '../utils/business';
+import { getPersonalRangeStats, isDayOffEntry, leaveKindOf, LEAVE_TYPES } from '../utils/business';
 import Time24Input from './Time24Input';
 import {
-  IHome, IOffice, IPencil, ITrash, IPlus, IChevronL, IChevronR,
+  IHome, IOffice, IPencil, ITrash, IPlus, IChevronL, IChevronR, IDownload,
 } from './icons';
 
 export default function EntriesTab({ user, entries, setEntries, settings }) {
@@ -19,6 +19,7 @@ export default function EntriesTab({ user, entries, setEntries, settings }) {
   const [flash, setFlash]         = useState('');
   const [monthOffset, setMonthOffset] = useState(0);
   const [formOpen, setFormOpen]   = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   const resetForm = () => {
     setDate(ymd(new Date()));
@@ -84,6 +85,29 @@ export default function EntriesTab({ user, entries, setEntries, settings }) {
     const userEntries = entries[user.id] || [];
     setEntries({ ...entries, [user.id]: userEntries.filter((x) => x.id !== id) });
     if (editingId === id) resetForm();
+  };
+
+  const exportToExcel = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const vd = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+      const ExcelJS = (await import('exceljs')).default;
+      const { exportMonthlyReport } = await import('../utils/exportExcel');
+      await exportMonthlyReport({
+        ExcelJS,
+        user,
+        entries: entries[user.id] || [],
+        settings,
+        year: vd.getFullYear(),
+        month: vd.getMonth(),
+      });
+    } catch (err) {
+      console.error('[entries] excel export failed:', err);
+      alert('ייצוא לאקסל נכשל. נסה שוב.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const userEntries = entries[user.id] || [];
@@ -232,20 +256,32 @@ export default function EntriesTab({ user, entries, setEntries, settings }) {
       {/* ===== Month table ===== */}
       <div className="card2">
         <div className="row-between" style={{ marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
-          <div className="period-nav2">
-            <button onClick={() => setMonthOffset((o) => o + 1)} aria-label="חודש הבא" type="button">
-              <IChevronL width="14" height="14" />
-            </button>
-            <div className="label">{HEB_MONTHS[viewDate.getMonth()]} {viewDate.getFullYear()}</div>
-            <button onClick={() => setMonthOffset((o) => o - 1)} aria-label="חודש קודם" type="button">
-              <IChevronR width="14" height="14" />
-            </button>
-            {monthOffset !== 0 && (
-              <button onClick={() => setMonthOffset(0)} title="חזרה לחודש הנוכחי" type="button"
-                      style={{ width: 'auto', padding: '0 10px', fontSize: 12 }}>
-                היום
+          <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+            <div className="period-nav2">
+              <button onClick={() => setMonthOffset((o) => o + 1)} aria-label="חודש הבא" type="button">
+                <IChevronL width="14" height="14" />
               </button>
-            )}
+              <div className="label">{HEB_MONTHS[viewDate.getMonth()]} {viewDate.getFullYear()}</div>
+              <button onClick={() => setMonthOffset((o) => o - 1)} aria-label="חודש קודם" type="button">
+                <IChevronR width="14" height="14" />
+              </button>
+              {monthOffset !== 0 && (
+                <button onClick={() => setMonthOffset(0)} title="חזרה לחודש הנוכחי" type="button"
+                        style={{ width: 'auto', padding: '0 10px', fontSize: 12 }}>
+                  היום
+                </button>
+              )}
+            </div>
+            <button
+              className="btn2 ghost"
+              onClick={exportToExcel}
+              disabled={exporting}
+              type="button"
+              title="ייצוא דוח חודשי לאקסל"
+              style={exporting ? { opacity: 0.6, cursor: 'wait' } : {}}
+            >
+              <IDownload width="15" height="15" /> {exporting ? 'מייצא…' : 'ייצוא לאקסל'}
+            </button>
           </div>
 
           <div className="row" style={{ gap: 18 }}>
@@ -288,6 +324,7 @@ export default function EntriesTab({ user, entries, setEntries, settings }) {
                 {monthEntries.map((e) => {
                   const d = parseYmd(e.date);
                   const isDayOff = isDayOffEntry(e);
+                  const leaveType = isDayOff ? (LEAVE_TYPES[leaveKindOf(e)] || LEAVE_TYPES.vacation) : null;
                   return (
                     <tr key={e.id} style={isDayOff ? { background: 'color-mix(in oklab, var(--warning-soft) 30%, transparent)' } : {}}>
                       <td>{d.getDate()}.{d.getMonth() + 1}.{d.getFullYear()}</td>
@@ -295,7 +332,7 @@ export default function EntriesTab({ user, entries, setEntries, settings }) {
                       <td><b>{fmtHours(e.hours)}</b></td>
                       <td style={{ color: 'var(--text-muted)' }}>
                         {isDayOff
-                          ? <span className="pill2 warning">יום חופש</span>
+                          ? <span className={`pill2 ${leaveType.pill}`}>{leaveType.label}</span>
                           : e.mode === 'range' && e.start && e.end
                             ? <span dir="ltr">{e.start} – {e.end}</span>
                             : e.viaPunch
