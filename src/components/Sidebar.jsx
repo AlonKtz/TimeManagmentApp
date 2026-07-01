@@ -61,7 +61,7 @@ export default function Sidebar({ tab, setTab, user, onLogout, working, pendingC
   const nav = [
     { id: 'dashboard', label: 'מסך ראשי',     Icon: IGrid },
     { id: 'entries',   label: 'השעות שלי',    Icon: IList },
-    { id: 'daysoff',   label: 'ימי חופש',     Icon: IPalmtree },
+    { id: 'daysoff',   label: 'היעדרויות',    Icon: IPalmtree },
     { id: 'quarterly', label: 'סיכום רבעוני', Icon: IChart },
     { id: 'account',   label: 'החשבון שלי',   Icon: IUser },
   ];

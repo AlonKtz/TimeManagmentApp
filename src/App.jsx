@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { DEFAULT_SETTINGS, DEFAULT_LOCATION } from './constants';
 import { ymd, fmtTime24, diffHours } from './utils/date';
 import { loadPunch, savePunch } from './utils/storage';
-import { getPersonalDailyTarget, isDayOffEntry, DAYOFF_NOTE } from './utils/business';
+import { getPersonalDailyTarget, isDayOffEntry, leaveKindOf, LEAVE_TYPES } from './utils/business';
 import sb from './lib/supabase';
 import { touchLastActive } from './lib/activity';
 import { useAuth } from './hooks/useAuth';
@@ -41,7 +41,7 @@ export default function App() {
   const [entries, setEntriesState] = useState([]);
   const [settings, setSettingsState] = useState(DEFAULT_SETTINGS);
   const [activePunch, setActivePunchState] = useState(null);
-  // daysOff kept as { [userId]: ['YYYY-MM-DD', ...] } for compat with DaysOff + Dashboard display
+  // leave kept as { [userId]: [{ date, kind }] } for DaysOff + Dashboard display
   const [daysOff, setDaysOffState] = useState({});
   const [dataLoaded, setDataLoaded] = useState(false);
 
@@ -159,11 +159,11 @@ export default function App() {
       );
       const normalized = rows.map(normalizeEntry);
       setEntriesState(normalized);
-      // Derive days-off list — entries marked by note OR mode (back-compat)
-      const dayoffDates = normalized
+      // Derive leave list as { date, kind } — entries marked by note/id/mode
+      const leaveItems = normalized
         .filter((e) => isDayOffEntry(e))
-        .map((e) => e.date);
-      setDaysOffState({ [user.id]: dayoffDates });
+        .map((e) => ({ date: e.date, kind: leaveKindOf(e) || 'vacation' }));
+      setDaysOffState({ [user.id]: leaveItems });
     } catch (e) {
       console.error('[app] loadEntries:', e);
     }
@@ -344,25 +344,39 @@ export default function App() {
     }
   };
 
-  // ── Days Off save ────────────────────────────────────────────────────────
-  // Days off are stored as time_entries with mode='dayoff'.
-  // The separate days_off table is not used — avoids RLS/schema issues.
+  // ── Leave save (vacation / sick / reserve) ────────────────────────────────
+  // Leave is stored as time_entries marked by note + id prefix (see LEAVE_TYPES).
+  // The daysOff map is { [userId]: [{ date, kind }] }. A separate days_off table
+  // is not used — avoids RLS/schema issues.
   const setDaysOff = async (nextMap) => {
     if (!user) return;
 
+    const keyOf = (l) => `${l.date}|${l.kind}`;
     // Refs → stale-closure safe
-    const prevDates = daysOffRef.current[user.id] || [];
-    const nextDates = nextMap[user.id] || [];
-    const toAdd    = nextDates.filter((d) => !prevDates.includes(d));
-    const toRemove = prevDates.filter((d) => !nextDates.includes(d));
+    const prev = daysOffRef.current[user.id] || [];
+    const next = nextMap[user.id] || [];
+    const prevKeys = new Set(prev.map(keyOf));
+    const nextKeys = new Set(next.map(keyOf));
+    const toAdd    = next.filter((l) => !prevKeys.has(keyOf(l)));
+    const toRemove = prev.filter((l) => !nextKeys.has(keyOf(l)));
 
     setDaysOffState(nextMap); // optimistic UI update
 
+    // ── Remove first (so a kind change on the same date re-adds cleanly) ────
+    for (const { date } of toRemove) {
+      const currentEntries = entriesRef.current;
+      const nextEntries = currentEntries.filter((e) => !(e.date === date && isDayOffEntry(e)));
+      if (nextEntries.length !== currentEntries.length) {
+        await saveEntries(nextEntries);
+      }
+    }
+
     // ── Add ───────────────────────────────────────────────────────────────
-    for (const date of toAdd) {
+    for (const { date, kind } of toAdd) {
+      const type = LEAVE_TYPES[kind] || LEAVE_TYPES.vacation;
       const d = new Date(date + 'T12:00:00'); // noon avoids DST edge cases
       const dayHours = getPersonalDailyTarget(d, settingsRef.current, user.jobPercent ?? 100, user.customDailyHours || null);
-      const entryId = 'dayoff_' + date + '_' + user.id.slice(0, 6);
+      const entryId = type.idPrefix + date + '_' + user.id.slice(0, 6);
       const currentEntries = entriesRef.current;
       if (!currentEntries.some((e) => e.date === date && isDayOffEntry(e))) {
         const newEntry = {
@@ -371,22 +385,13 @@ export default function App() {
           hours: dayHours,
           start: null,
           end: null,
-          note: DAYOFF_NOTE,        // marker — survives any DB constraint
+          note: type.note,          // marker — survives any DB constraint
           mode: 'hours',            // valid mode value (avoids CHECK constraint)
           location: DEFAULT_LOCATION,
           viaPunch: false,
           createdAt: new Date().toISOString(),
         };
         await saveEntries([...currentEntries, newEntry]);
-      }
-    }
-
-    // ── Remove ────────────────────────────────────────────────────────────
-    for (const date of toRemove) {
-      const currentEntries = entriesRef.current;
-      const nextEntries = currentEntries.filter((e) => !(e.date === date && isDayOffEntry(e)));
-      if (nextEntries.length !== currentEntries.length) {
-        await saveEntries(nextEntries);
       }
     }
   };

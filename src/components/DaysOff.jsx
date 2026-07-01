@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { HEB_MONTHS } from '../constants';
 import { ymd, parseYmd } from '../utils/date';
+import { LEAVE_TYPES } from '../utils/business';
 import {
   IPlus, ITrash, IChevronL, IChevronR, IPalmtree,
 } from './icons';
@@ -8,9 +9,12 @@ import {
 const HEB_WEEKDAYS = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
 const SHORT_MONTHS = ['ינו׳','פבר׳','מרץ','אפר׳','מאי','יוני','יולי','אוג׳','ספט׳','אוק׳','נוב׳','דצמ׳'];
 
+const KIND_ORDER = ['vacation', 'sick', 'reserve'];
+
 export default function DaysOff({ userId, daysOff, setDaysOff, jobPercent }) {
   const [monthOffset, setMonthOffset] = useState(0);
   const [date, setDate]               = useState(ymd(new Date()));
+  const [kind, setKind]               = useState('vacation');
   const [flash, setFlash]             = useState('');
 
   const now       = new Date();
@@ -18,64 +22,76 @@ export default function DaysOff({ userId, daysOff, setDaysOff, jobPercent }) {
   const viewYear  = viewDate.getFullYear();
   const viewMonth = viewDate.getMonth();
 
-  const userDaysOff = daysOff[userId] || [];
+  // userLeave: [{ date, kind }]
+  const userLeave = daysOff[userId] || [];
 
-  // Upcoming days off (current month + future) — for the leave-row list
+  // Upcoming leave (today + future) — for the hero counter
   const todayKey = ymd(new Date());
-  const upcoming = [...userDaysOff]
-    .filter((d) => d >= todayKey)
-    .sort();
-  const upcomingThisYear = upcoming.filter((d) => parseYmd(d).getFullYear() === now.getFullYear()).length;
+  const upcoming = userLeave.filter((l) => l.date >= todayKey);
+  const upcomingThisYear = upcoming.filter((l) => parseYmd(l.date).getFullYear() === now.getFullYear());
+  // Per-type counts across the whole year (for the sub-line breakdown)
+  const yearLeave = userLeave.filter((l) => parseYmd(l.date).getFullYear() === now.getFullYear());
+  const countByKind = (k) => yearLeave.filter((l) => l.kind === k).length;
 
-  const monthDaysOff = userDaysOff
-    .filter((d) => {
-      const dt = parseYmd(d);
+  const monthLeave = userLeave
+    .filter((l) => {
+      const dt = parseYmd(l.date);
       return dt.getFullYear() === viewYear && dt.getMonth() === viewMonth;
     })
-    .sort();
+    .sort((a, b) => a.date.localeCompare(b.date));
 
-  const addDayOff = (e) => {
+  const addLeave = (e) => {
     e.preventDefault();
     if (!date) { alert('בחר תאריך'); return; }
-    if (userDaysOff.includes(date)) { alert('יום זה כבר קיים ברשימת ימי החופשה'); return; }
-    setDaysOff({ ...daysOff, [userId]: [...userDaysOff, date] });
+    if (userLeave.some((l) => l.date === date)) {
+      alert('כבר קיימת היעדרות בתאריך זה. מחק אותה קודם כדי לשנות סוג.');
+      return;
+    }
+    setDaysOff({ ...daysOff, [userId]: [...userLeave, { date, kind }] });
     // Jump the month list to the added date so it's immediately visible
     const dt = parseYmd(date);
     setMonthOffset((dt.getFullYear() - now.getFullYear()) * 12 + (dt.getMonth() - now.getMonth()));
-    setFlash('יום חופש נוסף');
+    setFlash(`${LEAVE_TYPES[kind].label} נוסף/ה`);
     setTimeout(() => setFlash(''), 2000);
   };
 
-  const removeDayOff = (d) => {
-    if (!confirm('למחוק יום חופש זה?')) return;
-    setDaysOff({ ...daysOff, [userId]: userDaysOff.filter((x) => x !== d) });
+  const removeLeave = (d) => {
+    if (!confirm('למחוק היעדרות זו?')) return;
+    setDaysOff({ ...daysOff, [userId]: userLeave.filter((l) => l.date !== d) });
   };
 
   return (
     <div>
       <div className="topbar2">
         <div className="topbar2-left">
-          <div className="topbar2-eyebrow">חופשות וחגים</div>
-          <div className="topbar2-title">ימי חופש</div>
+          <div className="topbar2-eyebrow">חופש · מחלה · מילואים</div>
+          <div className="topbar2-title">היעדרויות</div>
         </div>
       </div>
 
       {/* ===== Hero stat + add form ===== */}
       <div className="leave-grid" style={{ marginBottom: 16 }}>
         <div className="leave-stat">
-          <div className="leave-stat-label">ימי חופש מתוכננים</div>
-          <div className="leave-stat-value num">{upcomingThisYear}</div>
+          <div className="leave-stat-label">היעדרויות מתוכננות</div>
+          <div className="leave-stat-value num">{upcomingThisYear.length}</div>
           <div className="leave-stat-sub">
-            השנה · {userDaysOff.length} סה״כ ברישום
+            השנה · {userLeave.length} סה״כ ברישום
             {jobPercent && jobPercent < 100 && (
               <> · {jobPercent}% משרה</>
             )}
+          </div>
+          <div className="row" style={{ gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+            {KIND_ORDER.map((k) => (
+              <span key={k} className={`pill2 ${LEAVE_TYPES[k].pill}`}>
+                {LEAVE_TYPES[k].label}: {countByKind(k)}
+              </span>
+            ))}
           </div>
         </div>
 
         <div className="card2">
           <div className="card2-title">
-            <h3>הוספת יום חופש</h3>
+            <h3>הוספת היעדרות</h3>
             <IPalmtree style={{ width: 18, height: 18, color: 'var(--primary)' }} />
           </div>
           {flash && (
@@ -84,9 +100,27 @@ export default function DaysOff({ userId, daysOff, setDaysOff, jobPercent }) {
             </div>
           )}
           <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
-            כל יום חופש שתוסיף נספר כשעות תקן ליום ההוא — כמו משמרת מלאה.
+            כל היעדרות נספרת כשעות תקן ליום ההוא — כמו משמרת מלאה. הסוג משמש לתיוג בלבד.
           </div>
-          <form onSubmit={addDayOff}>
+          <form onSubmit={addLeave}>
+            <div className="field" style={{ marginBottom: 12 }}>
+              <label className="field-label">סוג היעדרות</label>
+              <div className="location-seg2" role="group" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                {KIND_ORDER.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    className={kind === k ? 'active' : ''}
+                    style={kind === k
+                      ? { background: 'var(--surface)', color: 'var(--primary)' }
+                      : { color: 'var(--text-muted)' }}
+                    onClick={() => setKind(k)}
+                  >
+                    {LEAVE_TYPES[k].label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="form-row2">
               <div className="field" style={{ flex: 1 }}>
                 <label className="field-label">תאריך</label>
@@ -105,7 +139,7 @@ export default function DaysOff({ userId, daysOff, setDaysOff, jobPercent }) {
       {/* ===== Month list ===== */}
       <div className="card2">
         <div className="card2-title">
-          <h3>ימים בחודש {HEB_MONTHS[viewMonth]} {viewYear}</h3>
+          <h3>היעדרויות בחודש {HEB_MONTHS[viewMonth]} {viewYear}</h3>
           <div className="period-nav2">
             <button onClick={() => setMonthOffset((o) => o + 1)} aria-label="חודש הבא" type="button">
               <IChevronL width="14" height="14" />
@@ -124,25 +158,26 @@ export default function DaysOff({ userId, daysOff, setDaysOff, jobPercent }) {
         </div>
 
         <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
-          סה״כ: <b style={{ color: 'var(--text)' }}>{monthDaysOff.length}</b> ימי חופש בחודש זה
+          סה״כ: <b style={{ color: 'var(--text)' }}>{monthLeave.length}</b> ימי היעדרות בחודש זה
         </div>
 
-        {monthDaysOff.length === 0 ? (
+        {monthLeave.length === 0 ? (
           <div style={{
             padding: '36px 20px', textAlign: 'center',
             color: 'var(--text-muted)', fontSize: 14,
             background: 'var(--surface-2)', borderRadius: 14,
           }}>
             <div style={{ fontSize: 36, marginBottom: 10 }}>🏖</div>
-            <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>אין ימי חופש בחודש זה</div>
-            <div>הוסף יום חופש בטופס למעלה</div>
+            <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>אין היעדרויות בחודש זה</div>
+            <div>הוסף היעדרות בטופס למעלה</div>
           </div>
         ) : (
           <div className="stagger">
-            {monthDaysOff.map((d) => {
-              const dt = parseYmd(d);
+            {monthLeave.map((l) => {
+              const dt = parseYmd(l.date);
+              const type = LEAVE_TYPES[l.kind] || LEAVE_TYPES.vacation;
               return (
-                <div key={d} className="leave-row">
+                <div key={l.date} className="leave-row">
                   <div className="date">
                     <div className="d num">{dt.getDate()}</div>
                     <div className="m">{SHORT_MONTHS[dt.getMonth()]}</div>
@@ -151,8 +186,8 @@ export default function DaysOff({ userId, daysOff, setDaysOff, jobPercent }) {
                     <strong>{HEB_WEEKDAYS[dt.getDay()]}</strong>
                     <span>{dt.getDate()}.{dt.getMonth() + 1}.{dt.getFullYear()}</span>
                   </div>
-                  <span className="pill2 info">חופש</span>
-                  <button className="icon-btn2 danger" onClick={() => removeDayOff(d)} title="מחיקה">
+                  <span className={`pill2 ${type.pill}`}>{type.label}</span>
+                  <button className="icon-btn2 danger" onClick={() => removeLeave(l.date)} title="מחיקה">
                     <ITrash width="14" height="14" />
                   </button>
                 </div>

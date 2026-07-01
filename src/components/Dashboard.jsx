@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { HEB_DAYS, HEB_MONTHS, DEFAULT_LOCATION } from '../constants';
 import { ymd, fmtHours, fmtTime24, startOfWeek, endOfWeek, daysInRange, sessionDuration } from '../utils/date';
-import { getPersonalDailyTarget, getWorkedOnDate, getPersonalRangeStats, getHolidayInfo, isDayOffEntry } from '../utils/business';
+import { getPersonalDailyTarget, getWorkedOnDate, getPersonalRangeStats, getHolidayInfo, isDayOffEntry, LEAVE_TYPES } from '../utils/business';
 import PunchEditModal from './PunchEditModal';
 import TargetEditorModal from './TargetEditorModal';
 import LiveTimer from './LiveTimer';
@@ -24,7 +24,7 @@ export default function Dashboard({
   const isAdmin          = user.role === 'admin';
   const jobPercent       = user.jobPercent ?? 100;
   const customDailyHours = user.customDailyHours || null;
-  const userDaysOff      = daysOff || [];
+  const userLeave        = daysOff || []; // [{ date, kind }]
 
   useEffect(() => {
     if (activePunch?.location) setLocation(activePunch.location);
@@ -290,7 +290,8 @@ export default function Dashboard({
                 const worked      = getWorkedOnDate(entries, d) + (isToday ? liveAdd : 0);
                 const diff        = worked - target;
                 const holidayInfo = getHolidayInfo(d, settings);
-                const isDayOff    = userDaysOff.includes(ymd(d));
+                const leave       = userLeave.find((l) => l.date === ymd(d));
+                const leaveType   = leave ? (LEAVE_TYPES[leave.kind] || LEAVE_TYPES.vacation) : null;
                 const key         = ymd(d);
                 return (
                   <tr key={key} className={isToday ? 'current' : ''}>
@@ -298,8 +299,8 @@ export default function Dashboard({
                       <div className="row">
                         <strong>{HEB_DAYS[d.getDay()]}</strong>
                         {isToday && <span className="pill2 primary">היום</span>}
-                        {isDayOff && <span className="pill2 muted">חופש</span>}
-                        {!isDayOff && holidayInfo && (
+                        {leaveType && <span className={`pill2 ${leaveType.pill}`}>{leaveType.label}</span>}
+                        {!leaveType && holidayInfo && (
                           <span className={`pill2 ${holidayInfo.type === 'chag' ? 'danger' : 'warning'}`}>
                             {holidayInfo.note}
                           </span>

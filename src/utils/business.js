@@ -1,12 +1,37 @@
 import { ISRAELI_HOLIDAYS, HOLIDAY_TYPES } from '../constants';
 import { ymd, daysInRange } from './date';
 
-// Marker note used to identify a vacation-day entry.
-// Use a literal Hebrew prefix that survives any DB CHECK constraint on `mode`.
-export const DAYOFF_NOTE = 'יום חופש';
+// Leave / absence types. All book a full standard day (same target logic) —
+// the app tracks presence, not payroll, so vacation/sick/reserve differ only
+// by label. Each entry is stored as a time_entry marked by `note` and an `id`
+// prefix that survive any DB CHECK constraint on `mode`.
+export const LEAVE_TYPES = {
+  vacation: { note: 'יום חופש', idPrefix: 'dayoff_', label: 'חופש',   pill: 'info'    },
+  sick:     { note: 'יום מחלה', idPrefix: 'sick_',   label: 'מחלה',   pill: 'danger'  },
+  reserve:  { note: 'מילואים',  idPrefix: 'miluim_', label: 'מילואים', pill: 'warning' },
+};
 
+// Back-compat: the original vacation marker note.
+export const DAYOFF_NOTE = LEAVE_TYPES.vacation.note;
+
+// Which leave type is this entry, if any? Returns 'vacation' | 'sick' | 'reserve' | null.
+export function leaveKindOf(e) {
+  if (!e) return null;
+  if (e.id) {
+    for (const [kind, t] of Object.entries(LEAVE_TYPES)) {
+      if (e.id.startsWith(t.idPrefix)) return kind;
+    }
+  }
+  for (const [kind, t] of Object.entries(LEAVE_TYPES)) {
+    if (e.note === t.note) return kind;
+  }
+  if (e.mode === 'dayoff') return 'vacation'; // legacy rows
+  return null;
+}
+
+// True for any leave/absence entry (vacation, sick, or reserve).
 export function isDayOffEntry(e) {
-  return e.mode === 'dayoff' || e.note === DAYOFF_NOTE || (e.id && e.id.startsWith('dayoff_'));
+  return leaveKindOf(e) !== null;
 }
 
 export function hashPwd(pwd) {
