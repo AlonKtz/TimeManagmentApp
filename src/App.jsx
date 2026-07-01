@@ -471,6 +471,10 @@ export default function App() {
 
   return (
     <>
+      {/* Kept independent of the sidebar on purpose: if the sidebar ever breaks
+          (as it did once), this is the escape hatch that still lets a user reach
+          a fix without depending on the thing that's broken. */}
+      {updateBuildId && <UpdateBanner onReload={() => reloadToLatest(updateBuildId)} />}
       <MeshBackground />
       <GradDefs />
       <div className="app-shell">
