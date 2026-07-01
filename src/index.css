@@ -108,7 +108,7 @@ html, body {
   color: var(--text);
   font-size: 15px;
   line-height: 1.5;
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 button {
@@ -343,7 +343,7 @@ input:focus, select:focus {
 
 /* ===== Login ===== */
 .login-wrapper {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;

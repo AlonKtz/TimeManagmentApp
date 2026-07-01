@@ -27,6 +27,7 @@ export function startUpdateChecker(onUpdate) {
   let lastCheck = 0;
   let notified = false;
   let timer = null;
+  let firstCheck = true;
 
   const check = async () => {
     if (notified) return;
@@ -35,11 +36,27 @@ export function startUpdateChecker(onUpdate) {
     try {
       const deployed = await fetchDeployedBuildId();
       if (deployed && deployed !== CURRENT_BUILD_ID) {
+        // On the FIRST check right after load, force a one-time hard reload so a
+        // stale cache self-heals with zero user action. The ?v= param busts the
+        // cached index.html; a sessionStorage guard (keyed by the target build)
+        // prevents any reload loop if that ever fails to land.
+        const GUARD = 'hc-autoreloaded';
+        let already = null;
+        try { already = sessionStorage.getItem(GUARD); } catch {}
+        if (firstCheck && already !== deployed) {
+          try { sessionStorage.setItem(GUARD, deployed); } catch {}
+          reloadToLatest(deployed);
+          return;
+        }
+        // Update appeared mid-session (or auto-reload already used): don't yank
+        // the user mid-task — surface the toast/button instead.
         notified = true;
         onUpdate(deployed);
       }
     } catch {
       // offline / version.json missing (e.g. dev) — ignore, try again later
+    } finally {
+      firstCheck = false;
     }
   };
 
