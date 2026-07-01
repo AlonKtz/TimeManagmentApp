@@ -4,6 +4,7 @@ import {
   IChevronL, IChevronR, ISun, IMoon, ILogout, IMenu, IX, IRefresh, IShare, IAddHome,
 } from './icons';
 import { useInstallPrompt } from '../hooks/useInstallPrompt';
+import { APP_VERSION } from '../constants';
 
 function readCollapsed() {
   return typeof document !== 'undefined' &&
@@ -21,11 +22,13 @@ export default function Sidebar({ tab, setTab, user, onLogout, working, pendingC
   const [showIosInstall, setShowIosInstall] = useState(false);
 
   const { canPrompt, isIOS, isStandalone, promptInstall } = useInstallPrompt();
-  const canInstall = !isStandalone && (canPrompt || isIOS);
+  // Show whenever not already installed — never gate visibility on UA sniffing,
+  // which can miss a device. handleInstall picks the right flow underneath.
+  const canInstall = !isStandalone;
 
   const handleInstall = () => {
-    if (canPrompt) { promptInstall(); }
-    else if (isIOS) { setShowIosInstall(true); }
+    if (canPrompt) { promptInstall(); return; }
+    setShowIosInstall(true); // manual-steps sheet; wording adapts to isIOS
   };
 
   // Sync mobile drawer state → html attribute so CSS can drive transforms
@@ -141,10 +144,11 @@ export default function Sidebar({ tab, setTab, user, onLogout, working, pendingC
             <IClock style={{ width: 22, height: 22 }} />
           </div>
           <div className="sidebar-brand-text">
-            <strong>Hour Counter</strong>
+            <strong>Hour Counter <span style={{ fontWeight: 500 }}>by AK</span></strong>
             <span className={working ? 'live' : ''}>
-              {working ? 'בעבודה כרגע' : 'by AK'}
+              {working ? 'בעבודה כרגע' : 'שעות עבודה'}
             </span>
+            <span className="sidebar-brand-version">{APP_VERSION}</span>
           </div>
         </div>
 
@@ -221,14 +225,15 @@ export default function Sidebar({ tab, setTab, user, onLogout, working, pendingC
       </aside>
 
       {showIosInstall && (
-        <IosInstallHelp onClose={() => setShowIosInstall(false)} />
+        <InstallHelp isIOS={isIOS} onClose={() => setShowIosInstall(false)} />
       )}
     </>
   );
 }
 
-// iOS Safari can't trigger install programmatically — show the manual steps.
-function IosInstallHelp({ onClose }) {
+// No programmatic install available (iOS Safari, or a browser that hasn't
+// fired beforeinstallprompt yet) — show the manual steps for the platform.
+function InstallHelp({ isIOS, onClose }) {
   const step = (n, text, icon) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
       <div style={{
@@ -263,11 +268,22 @@ function IosInstallHelp({ onClose }) {
           הוספה למסך הבית
         </div>
         <div style={{ fontSize: 13, color: 'var(--text-muted, #78716c)', marginBottom: 8 }}>
-          ב-Safari מוסיפים ידנית בשלושה צעדים:
+          {isIOS
+            ? 'ב-Safari מוסיפים ידנית בשלושה צעדים:'
+            : 'בדפדפן זה מוסיפים ידנית:'}
         </div>
-        {step(1, <>הקש על כפתור השיתוף בתחתית הדפדפן</>, <IShare width="20" height="20" />)}
-        {step(2, <>גלול ובחר <b>״הוסף למסך הבית״</b></>, <IAddHome width="20" height="20" />)}
-        {step(3, <>הקש <b>״הוסף״</b> בפינה העליונה</>)}
+        {isIOS ? (
+          <>
+            {step(1, <>הקש על כפתור השיתוף בתחתית הדפדפן</>, <IShare width="20" height="20" />)}
+            {step(2, <>גלול ובחר <b>״הוסף למסך הבית״</b></>, <IAddHome width="20" height="20" />)}
+            {step(3, <>הקש <b>״הוסף״</b> בפינה העליונה</>)}
+          </>
+        ) : (
+          <>
+            {step(1, <>פתח את תפריט הדפדפן (⋮ או ☰)</>)}
+            {step(2, <>חפש <b>״התקן אפליקציה״</b> או <b>״הוסף למסך הבית״</b></>, <IAddHome width="20" height="20" />)}
+          </>
+        )}
         <button
           type="button"
           onClick={onClose}

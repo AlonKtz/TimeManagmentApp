@@ -76,7 +76,7 @@ body {
   background: var(--bg);
   color: var(--text);
   overflow-x: hidden;
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 button { font-family: inherit; font-size: inherit; }
 input, select, textarea { font-family: inherit; }
@@ -159,7 +159,7 @@ html[data-anim="off"] .bg-orb { animation: none !important; }
   z-index: 1;
   display: grid;
   grid-template-columns: 1fr var(--sidebar-w);
-  min-height: 100vh;
+  min-height: 100dvh;
   gap: 0;
 }
 html[data-sidebar="collapsed"] .app-shell {
@@ -180,12 +180,13 @@ html[data-sidebar="collapsed"] .app-shell {
 .sidebar {
   position: sticky;
   top: 0;
-  height: 100vh;
+  height: 100dvh;
   padding: 20px 16px;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   background:
     linear-gradient(180deg, color-mix(in oklab, var(--surface) 60%, transparent) 0%, color-mix(in oklab, var(--surface) 90%, transparent) 100%);
   border-inline-start: 1px solid var(--border);
@@ -228,7 +229,8 @@ html.theme-dark .sidebar {
 }
 .sidebar-brand-text strong { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
 .sidebar-brand-text span { font-size: 11px; color: var(--text-muted); font-weight: 500; }
-.sidebar-brand-text.live { color: var(--success); }
+.sidebar-brand-text .live { color: var(--success); }
+.sidebar-brand-version { font-size: 10px; color: var(--text-soft, var(--text-muted)); font-weight: 500; opacity: 0.75; }
 
 html[data-sidebar="collapsed"] .sidebar { padding: 20px 10px; }
 html[data-sidebar="collapsed"] .sidebar-brand-text,
@@ -1261,7 +1263,7 @@ html[data-anim="off"] *::after {
 .login-shell {
   position: relative;
   z-index: 1;
-  min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: 24px;

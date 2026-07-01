@@ -1,3 +1,6 @@
+// Bump on every deploy: v2.0 (baseline) → v2.01 → v2.02 …
+export const APP_VERSION = 'v2.01';
+
 export const STORAGE_KEYS = {
   users: 'tt_users',
   session: 'tt_session',
