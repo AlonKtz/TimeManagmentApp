@@ -471,7 +471,6 @@ export default function App() {
 
   return (
     <>
-      {updateBuildId && <UpdateBanner onReload={() => reloadToLatest(updateBuildId)} />}
       <MeshBackground />
       <GradDefs />
       <div className="app-shell">
@@ -536,6 +535,8 @@ export default function App() {
           working={!!activePunch}
           pendingCount={pendingCount}
           onLogout={auth.logout}
+          updateAvailable={!!updateBuildId}
+          onReload={() => reloadToLatest(updateBuildId)}
         />
       </div>
     </>

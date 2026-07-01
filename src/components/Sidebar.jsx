@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import {
   IClock, IGrid, IList, IPalmtree, IChart, IUser, ISettings,
-  IChevronL, IChevronR, ISun, IMoon, ILogout, IMenu, IX,
+  IChevronL, IChevronR, ISun, IMoon, ILogout, IMenu, IX, IRefresh, IShare, IAddHome,
 } from './icons';
+import { useInstallPrompt } from '../hooks/useInstallPrompt';
 
 function readCollapsed() {
   return typeof document !== 'undefined' &&
@@ -13,10 +14,19 @@ function readDark() {
     document.documentElement.classList.contains('theme-dark');
 }
 
-export default function Sidebar({ tab, setTab, user, onLogout, working, pendingCount = 0 }) {
+export default function Sidebar({ tab, setTab, user, onLogout, working, pendingCount = 0, updateAvailable = false, onReload }) {
   const [collapsed, setCollapsed]     = useState(readCollapsed);
   const [dark, setDark]               = useState(readDark);
   const [mobileOpen, setMobileOpen]   = useState(false);
+  const [showIosInstall, setShowIosInstall] = useState(false);
+
+  const { canPrompt, isIOS, isStandalone, promptInstall } = useInstallPrompt();
+  const canInstall = !isStandalone && (canPrompt || isIOS);
+
+  const handleInstall = () => {
+    if (canPrompt) { promptInstall(); }
+    else if (isIOS) { setShowIosInstall(true); }
+  };
 
   // Sync mobile drawer state → html attribute so CSS can drive transforms
   useEffect(() => {
@@ -80,10 +90,21 @@ export default function Sidebar({ tab, setTab, user, onLogout, working, pendingC
       <button
         className="mobile-menu-trigger"
         onClick={() => setMobileOpen(true)}
-        aria-label="פתח תפריט"
+        aria-label={updateAvailable ? 'פתח תפריט — גרסה חדשה זמינה' : 'פתח תפריט'}
         type="button"
+        style={{ position: 'relative' }}
       >
         <IMenu />
+        {updateAvailable && (
+          <span
+            aria-hidden="true"
+            style={{
+              position: 'absolute', top: 7, insetInlineEnd: 7,
+              width: 9, height: 9, borderRadius: '50%',
+              background: 'var(--primary)', boxShadow: '0 0 0 2px var(--surface)',
+            }}
+          />
+        )}
       </button>
 
       {/* ===== Mobile-only backdrop ===== */}
@@ -121,9 +142,9 @@ export default function Sidebar({ tab, setTab, user, onLogout, working, pendingC
             <IClock style={{ width: 22, height: 22 }} />
           </div>
           <div className="sidebar-brand-text">
-            <strong>שעות צוות</strong>
+            <strong>Hour Counter</strong>
             <span className={working ? 'live' : ''}>
-              {working ? 'בעבודה כרגע' : 'Team Hours'}
+              {working ? 'בעבודה כרגע' : 'by AK'}
             </span>
           </div>
         </div>
@@ -144,6 +165,30 @@ export default function Sidebar({ tab, setTab, user, onLogout, working, pendingC
         ))}
 
         <div className="sidebar-footer">
+          {updateAvailable && (
+            <button
+              className="sidebar-item"
+              onClick={onReload}
+              title="גרסה חדשה זמינה — רענן"
+              type="button"
+              style={{ background: 'var(--primary)', color: '#fff', marginBottom: 8, fontWeight: 700 }}
+            >
+              <span className="sidebar-item-icon"><IRefresh /></span>
+              <span className="sidebar-item-label">גרסה חדשה — רענן</span>
+            </button>
+          )}
+          {canInstall && (
+            <button
+              className="sidebar-item"
+              onClick={handleInstall}
+              title="הוסף למסך הבית"
+              type="button"
+              style={{ marginBottom: 4 }}
+            >
+              <span className="sidebar-item-icon"><IAddHome /></span>
+              <span className="sidebar-item-label">הוסף למסך הבית</span>
+            </button>
+          )}
           <button
             className="sidebar-item"
             onClick={toggleTheme}
@@ -175,6 +220,64 @@ export default function Sidebar({ tab, setTab, user, onLogout, working, pendingC
           </div>
         </div>
       </aside>
+
+      {showIosInstall && (
+        <IosInstallHelp onClose={() => setShowIosInstall(false)} />
+      )}
     </>
+  );
+}
+
+// iOS Safari can't trigger install programmatically — show the manual steps.
+function IosInstallHelp({ onClose }) {
+  const step = (n, text, icon) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
+      <div style={{
+        width: 26, height: 26, flex: '0 0 auto', borderRadius: '50%',
+        background: 'var(--primary-soft, #e6f1f0)', color: 'var(--primary, #0f766e)',
+        display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13,
+      }}>{n}</div>
+      <div style={{ fontSize: 14, color: 'var(--text, #1c1917)' }}>{text}</div>
+      {icon && <span style={{ marginInlineStart: 'auto', color: 'var(--primary, #0f766e)' }}>{icon}</span>}
+    </div>
+  );
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 10000,
+        background: 'rgba(0,0,0,0.5)', display: 'flex',
+        alignItems: 'flex-end', justifyContent: 'center',
+        padding: 'env(safe-area-inset-bottom, 0px) 16px 16px',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        dir="rtl"
+        style={{
+          width: '100%', maxWidth: 400, background: 'var(--surface, #fff)',
+          borderRadius: 18, padding: '20px 20px 16px',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+        }}
+      >
+        <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4, color: 'var(--text, #1c1917)' }}>
+          הוספה למסך הבית
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted, #78716c)', marginBottom: 8 }}>
+          ב-Safari מוסיפים ידנית בשלושה צעדים:
+        </div>
+        {step(1, <>הקש על כפתור השיתוף בתחתית הדפדפן</>, <IShare width="20" height="20" />)}
+        {step(2, <>גלול ובחר <b>״הוסף למסך הבית״</b></>, <IAddHome width="20" height="20" />)}
+        {step(3, <>הקש <b>״הוסף״</b> בפינה העליונה</>)}
+        <button
+          type="button"
+          onClick={onClose}
+          className="btn2 primary"
+          style={{ width: '100%', marginTop: 14 }}
+        >
+          הבנתי
+        </button>
+      </div>
+    </div>
   );
 }

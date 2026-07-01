@@ -68,7 +68,7 @@ function dayRow(entries, date) {
 // `logo` is an optional pre-loaded { buffer, extension }.
 export function buildWorkbook({ ExcelJS, user, entries, settings, year, month, logo = null }) {
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'Timekeeper';
+  wb.creator = 'Hour Counter by AK';
   const ws = wb.addWorksheet(`${HEB_MONTHS[month]} ${year}`, {
     views: [{ rightToLeft: true, showGridLines: false }],
     pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },

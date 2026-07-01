@@ -38,7 +38,7 @@ export default function LoginScreen({ auth }) {
             <polyline points="12 6 12 12 16 14"/>
           </svg>
         </div>
-        <h1 className="login-title">מעקב שעות צוות</h1>
+        <h1 className="login-title">Hour Counter by AK</h1>
         <p className="login-subtitle">
           {mode === 'login' ? 'התחברות למערכת' : 'יצירת חשבון חדש'}
         </p>
