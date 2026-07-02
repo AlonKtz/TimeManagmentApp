@@ -10,11 +10,16 @@
 //
 // Data the app doesn't track (overtime, on-call, site) is left blank/fillable.
 
-import { HEB_MONTHS } from '../constants';
+import { HEB_DAYS, HEB_MONTHS } from '../constants';
 import { ymd } from './date';
 import { getPersonalRangeStats, isDayOffEntry } from './business';
 
 const stripZero = (t) => (t ? String(t).replace(/^0(\d)/, '$1') : '');
+// Excel date serial (days since 1899-12-30), computed in UTC so it never picks
+// up a local-timezone shift the way a JS Date result would.
+const excelSerial = (y, m /* 0-based */, d) =>
+  Math.round((Date.UTC(y, m, d) - Date.UTC(1899, 11, 30)) / 86400000);
+
 // "HH:MM" → Excel time as a fraction of a day (so real time math works in-sheet).
 const timeToFrac = (t) => {
   if (!t) return null;
@@ -74,6 +79,9 @@ function dayRow(entries, date) {
 export function buildWorkbook({ ExcelJS, user, entries, settings, year, month, logo = null }) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Hour Counter by AK';
+  // Force Excel/Sheets to recalculate every formula on open, so dates, daily
+  // totals and month totals show values immediately (not blank until edited).
+  wb.calcProperties.fullCalcOnLoad = true;
   const ws = wb.addWorksheet(`${HEB_MONTHS[month]} ${year}`, {
     views: [{ rightToLeft: true, showGridLines: false }],
     pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
@@ -183,6 +191,7 @@ export function buildWorkbook({ ExcelJS, user, entries, settings, year, month, l
   const ROWS = 31;
   const daysInMonth = monthEnd.getDate();
   const DATA_END = DATA_START + ROWS - 1;
+  let totalRegular = 0; // running sum for the cached SUM(E) result
 
   for (let i = 0; i < ROWS; i++) {
     const day = i + 1;
@@ -203,10 +212,12 @@ export function buildWorkbook({ ExcelJS, user, entries, settings, year, month, l
       return c;
     };
 
-    // A: date driven by year/month cells (English month via [$-409]); B: weekday
+    // A: date driven by year/month cells (English month via [$-409]); B: weekday.
+    // Every formula carries a cached `result` so values render even in viewers
+    // that don't recalculate, while still updating live when the month changes.
     const dateExpr = `DATE(${YEAR_CELL},${MONTH_CELL},1)+${i}`;
-    setCell('A', { formula: `IF(MONTH(${dateExpr})=${MONTH_CELL},${dateExpr},"")` }, { numFmt: '[$-409]d-mmm-yy' });
-    setCell('B', { formula: HEB_WEEKDAY_FORMULA(`A${rowIdx}`) });
+    setCell('A', { formula: `IF(MONTH(${dateExpr})=${MONTH_CELL},${dateExpr},"")`, result: inMonth ? excelSerial(year, month, day) : '' }, { numFmt: '[$-409]d-mmm-yy' });
+    setCell('B', { formula: HEB_WEEKDAY_FORMULA(`A${rowIdx}`), result: inMonth ? HEB_DAYS[date.getDay()] : '' });
 
     // C/D punch in-out (real time values); E regular total = live formula from them.
     const startFrac = timeToFrac(r.start);
@@ -214,10 +225,14 @@ export function buildWorkbook({ ExcelJS, user, entries, settings, year, month, l
     setCell('C', startFrac, { numFmt: 'h:mm' });
     setCell('D', endFrac, { numFmt: 'h:mm' });
     if (startFrac != null && endFrac != null) {
-      setCell('E', { formula: `IF(AND(C${rowIdx}<>"",D${rowIdx}<>""),(D${rowIdx}-C${rowIdx})*24,"")` }, { numFmt: '0.00' });
+      const eResult = Math.round((endFrac - startFrac) * 24 * 100) / 100;
+      totalRegular += eResult;
+      setCell('E', { formula: `IF(AND(C${rowIdx}<>"",D${rowIdx}<>""),(D${rowIdx}-C${rowIdx})*24,"")`, result: eResult }, { numFmt: '0.00' });
     } else if (r.decimal > 0) {
       // Leave / manual-hours day: no punch times, so show the hours directly.
-      setCell('E', Math.round(r.decimal * 100) / 100, { numFmt: '0.00' });
+      const eVal = Math.round(r.decimal * 100) / 100;
+      totalRegular += eVal;
+      setCell('E', eVal, { numFmt: '0.00' });
     } else {
       setCell('E', null, { numFmt: '0.00' });
     }
@@ -225,7 +240,7 @@ export function buildWorkbook({ ExcelJS, user, entries, settings, year, month, l
     // F/G overtime punch (blank, fillable); H overtime total = live formula.
     setCell('F', null, { numFmt: 'h:mm' });
     setCell('G', null, { numFmt: 'h:mm' });
-    setCell('H', { formula: `IF(AND(F${rowIdx}<>"",G${rowIdx}<>""),(G${rowIdx}-F${rowIdx})*24,"")` }, { numFmt: '0.00' });
+    setCell('H', { formula: `IF(AND(F${rowIdx}<>"",G${rowIdx}<>""),(G${rowIdx}-F${rowIdx})*24,"")`, result: '' }, { numFmt: '0.00' });
 
     // I on-call dropdown; J note
     setCell('I', null);
@@ -234,6 +249,7 @@ export function buildWorkbook({ ExcelJS, user, entries, settings, year, month, l
 
     ws.getRow(rowIdx).height = 18;
   }
+  totalRegular = Math.round(totalRegular * 100) / 100;
 
   // ── Month totals (right) + signatures (left) ──────────────────────────────
   const SUM_ROW = DATA_END + 2; // one blank spacer row after the table
@@ -254,17 +270,17 @@ export function buildWorkbook({ ExcelJS, user, entries, settings, year, month, l
     if (numFmt) c.numFmt = numFmt;
   };
 
-  // Totals box (cols A-C)
+  // Totals box (cols A-C) — cached results so they show without a recalc.
   const totals = [
-    ['סה״כ שעות',         `SUM(E${DATA_START}:E${DATA_END})`,        '0.00'],
-    ['סה״כ שעות חריגות',  `SUM(H${DATA_START}:H${DATA_END})`,        '0.00'],
-    ['סה״כ ימי כוננות',   `COUNTIF(I${DATA_START}:I${DATA_END},"כן")`, '0'],
+    ['סה״כ שעות',         `SUM(E${DATA_START}:E${DATA_END})`,        totalRegular, '0.00'],
+    ['סה״כ שעות חריגות',  `SUM(H${DATA_START}:H${DATA_END})`,        0,            '0.00'],
+    ['סה״כ ימי כוננות',   `COUNTIF(I${DATA_START}:I${DATA_END},"כן")`, 0,          '0'],
   ];
-  totals.forEach(([label, formula, fmt], i) => {
+  totals.forEach(([label, formula, result, fmt], i) => {
     const rr = SUM_ROW + i;
     ws.mergeCells(`A${rr}:B${rr}`);
     boxLabel(`A${rr}`, label);
-    boxValue(`C${rr}`, { formula }, fmt);
+    boxValue(`C${rr}`, { formula, result }, fmt);
     ws.getRow(rr).height = 22;
   });
 
