@@ -10,13 +10,18 @@
 //
 // Data the app doesn't track (overtime, on-call, site) is left blank/fillable.
 
-import { HEB_DAYS, HEB_MONTHS } from '../constants';
-import { ymd, parseYmd } from './date';
+import { HEB_MONTHS } from '../constants';
+import { ymd } from './date';
 import { getPersonalRangeStats, isDayOffEntry } from './business';
 
-const ENG_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
 const stripZero = (t) => (t ? String(t).replace(/^0(\d)/, '$1') : '');
+// "HH:MM" → Excel time as a fraction of a day (so real time math works in-sheet).
+const timeToFrac = (t) => {
+  if (!t) return null;
+  const [h, m] = String(t).split(':').map(Number);
+  if (Number.isNaN(h)) return null;
+  return (h + (m || 0) / 60) / 24;
+};
 const thin = { style: 'thin', color: { argb: 'FF888888' } };
 const allBorders = { top: thin, left: thin, bottom: thin, right: thin };
 
@@ -164,46 +169,118 @@ export function buildWorkbook({ ExcelJS, user, entries, settings, year, month, l
   ws.getRow(HEADER_TOP).height = 20;
   ws.getRow(HEADER_SUB).height = 30;
 
-  // ── Data rows: every calendar day ───────────────────────────────────────
-  const daysInMonth = monthEnd.getDate();
-  for (let day = 1; day <= daysInMonth; day++) {
-    const date = new Date(year, month, day);
-    const r = dayRow(entries, date);
-    const rowIdx = DATA_START + (day - 1);
-    const isWeekend = date.getDay() === 5 || date.getDay() === 6;
+  // ── Data rows ─────────────────────────────────────────────────────────────
+  // Always 31 rows so the sheet stays a reusable template. The date + weekday
+  // are FORMULAS driven by the שנה/חודש cells (H7/H8): change the month and the
+  // whole column recalculates; days past the month's end blank themselves out.
+  // The regular-hours total (col E) is a live formula = (סיום − התחלה); times are
+  // written as real Excel time values so that math works.
+  const YEAR_CELL = '$H$7';
+  const MONTH_CELL = '$H$8';
+  const HEB_WEEKDAY_FORMULA = (a) =>
+    `IF(${a}="","",CHOOSE(WEEKDAY(${a}),"ראשון","שני","שלישי","רביעי","חמישי","שישי","שבת"))`;
 
-    const cells = {
-      A: `${day}-${ENG_MONTHS[month]}-${String(year).slice(2)}`,
-      B: HEB_DAYS[date.getDay()],
-      C: r.start,
-      D: r.end,
-      E: r.decimal.toFixed(2),
-      F: '',
-      G: '',
-      H: '0.00',
-      I: '',
-      J: r.note,
-    };
-    for (const [col, value] of Object.entries(cells)) {
+  const ROWS = 31;
+  const daysInMonth = monthEnd.getDate();
+  const DATA_END = DATA_START + ROWS - 1;
+
+  for (let i = 0; i < ROWS; i++) {
+    const day = i + 1;
+    const rowIdx = DATA_START + i;
+    const inMonth = day <= daysInMonth;
+    const date = inMonth ? new Date(year, month, day) : null;
+    const r = inMonth ? dayRow(entries, date) : { start: '', end: '', decimal: 0, note: '' };
+    const isWeekend = date && (date.getDay() === 5 || date.getDay() === 6);
+
+    const setCell = (col, value, { numFmt, align = 'center' } = {}) => {
       const c = ws.getCell(`${col}${rowIdx}`);
-      c.value = value;
+      if (value != null) c.value = value;
       c.border = allBorders;
       c.font = { size: 10, name: 'Arial' };
-      c.alignment = {
-        horizontal: col === 'J' ? 'right' : 'center',
-        vertical: 'middle',
-      };
+      c.alignment = { horizontal: align, vertical: 'middle' };
+      if (numFmt) c.numFmt = numFmt;
       if (isWeekend) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF7F7F7' } };
-    }
-    // numeric columns: keep two-decimal string but right reading order
-    ws.getCell(`A${rowIdx}`).alignment = { horizontal: 'center', vertical: 'middle' };
-
-    // on-call dropdown so the column behaves like the original sheet
-    ws.getCell(`I${rowIdx}`).dataValidation = {
-      type: 'list', allowBlank: true, formulae: ['"כן,לא"'],
+      return c;
     };
+
+    // A: date driven by year/month cells (English month via [$-409]); B: weekday
+    const dateExpr = `DATE(${YEAR_CELL},${MONTH_CELL},1)+${i}`;
+    setCell('A', { formula: `IF(MONTH(${dateExpr})=${MONTH_CELL},${dateExpr},"")` }, { numFmt: '[$-409]d-mmm-yy' });
+    setCell('B', { formula: HEB_WEEKDAY_FORMULA(`A${rowIdx}`) });
+
+    // C/D punch in-out (real time values); E regular total = live formula from them.
+    const startFrac = timeToFrac(r.start);
+    const endFrac = timeToFrac(r.end);
+    setCell('C', startFrac, { numFmt: 'h:mm' });
+    setCell('D', endFrac, { numFmt: 'h:mm' });
+    if (startFrac != null && endFrac != null) {
+      setCell('E', { formula: `IF(AND(C${rowIdx}<>"",D${rowIdx}<>""),(D${rowIdx}-C${rowIdx})*24,"")` }, { numFmt: '0.00' });
+    } else if (r.decimal > 0) {
+      // Leave / manual-hours day: no punch times, so show the hours directly.
+      setCell('E', Math.round(r.decimal * 100) / 100, { numFmt: '0.00' });
+    } else {
+      setCell('E', null, { numFmt: '0.00' });
+    }
+
+    // F/G overtime punch (blank, fillable); H overtime total = live formula.
+    setCell('F', null, { numFmt: 'h:mm' });
+    setCell('G', null, { numFmt: 'h:mm' });
+    setCell('H', { formula: `IF(AND(F${rowIdx}<>"",G${rowIdx}<>""),(G${rowIdx}-F${rowIdx})*24,"")` }, { numFmt: '0.00' });
+
+    // I on-call dropdown; J note
+    setCell('I', null);
+    ws.getCell(`I${rowIdx}`).dataValidation = { type: 'list', allowBlank: true, formulae: ['"כן,לא"'] };
+    setCell('J', r.note || null, { align: 'right' });
+
     ws.getRow(rowIdx).height = 18;
   }
+
+  // ── Month totals (right) + signatures (left) ──────────────────────────────
+  const SUM_ROW = DATA_END + 2; // one blank spacer row after the table
+
+  const boxLabel = (ref, text) => {
+    const c = ws.getCell(ref);
+    c.value = text;
+    c.font = { bold: true, size: 11, name: 'Arial' };
+    c.alignment = { horizontal: 'right', vertical: 'middle' };
+    c.border = allBorders;
+  };
+  const boxValue = (ref, value, numFmt) => {
+    const c = ws.getCell(ref);
+    if (value != null) c.value = value;
+    c.font = { bold: true, size: 11, name: 'Arial' };
+    c.alignment = { horizontal: 'center', vertical: 'middle' };
+    c.border = allBorders;
+    if (numFmt) c.numFmt = numFmt;
+  };
+
+  // Totals box (cols A-C)
+  const totals = [
+    ['סה״כ שעות',         `SUM(E${DATA_START}:E${DATA_END})`,        '0.00'],
+    ['סה״כ שעות חריגות',  `SUM(H${DATA_START}:H${DATA_END})`,        '0.00'],
+    ['סה״כ ימי כוננות',   `COUNTIF(I${DATA_START}:I${DATA_END},"כן")`, '0'],
+  ];
+  totals.forEach(([label, formula, fmt], i) => {
+    const rr = SUM_ROW + i;
+    ws.mergeCells(`A${rr}:B${rr}`);
+    boxLabel(`A${rr}`, label);
+    boxValue(`C${rr}`, { formula }, fmt);
+    ws.getRow(rr).height = 22;
+  });
+
+  // Signatures box (cols E-H)
+  const signatures = [
+    ['חתימת העובד',       user.name || ''],
+    ['חתימת מנהל האתר',   ''],
+    ['חתימת מנהל המחשוב', ''],
+  ];
+  signatures.forEach(([label, value], i) => {
+    const rr = SUM_ROW + i;
+    ws.mergeCells(`E${rr}:F${rr}`);
+    boxLabel(`E${rr}`, label);
+    ws.mergeCells(`G${rr}:H${rr}`);
+    boxValue(`G${rr}`, value || null);
+  });
 
   return wb;
 }
