@@ -103,9 +103,11 @@ export function useAuth() {
         };
       }
       if (msg.includes('invalid login') || msg.includes('user not found') || msg.includes('no user')) {
+        // profiles is RLS-locked to the owner, so we can't read it anonymously.
+        // email_exists() (SECURITY DEFINER RPC) checks auth.users safely.
         try {
-          const rows = await sb.select('profiles', `email=eq.${encodeURIComponent(email)}&select=id`);
-          if (Array.isArray(rows) && rows.length === 0) return { notRegistered: true };
+          const exists = await sb.rpc('email_exists', { p_email: email });
+          if (exists === false) return { notRegistered: true };
           return { error: 'הסיסמה שגויה — נסה שוב' };
         } catch {}
       }

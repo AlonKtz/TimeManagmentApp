@@ -68,6 +68,20 @@ const sb = {
     }
     return r.json();
   },
+  // Call a Postgres function (RPC). Used for anon-safe checks that RLS would
+  // otherwise block (e.g. email_exists against auth.users).
+  async rpc(fn, args = {}) {
+    const r = await fetch(`${this._url}/rest/v1/rpc/${fn}`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify(args),
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      throw new Error(e.message || r.status);
+    }
+    return r.json();
+  },
   async upsert(table, body, onConflict) {
     const qs = onConflict ? `?on_conflict=${onConflict}` : '';
     const r = await fetch(`${this._url}/rest/v1/${table}${qs}`, {

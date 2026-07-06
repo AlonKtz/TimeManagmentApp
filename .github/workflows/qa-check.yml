@@ -8,6 +8,12 @@ on:
 jobs:
   qa:
     runs-on: ubuntu-latest
+    env:
+      # Public anon key (same one shipped in the client bundle) — the QA bot uses
+      # anon-callable RPCs (qa_stats / qa_cleanup_selftest), so it no longer needs
+      # the service_role key at all.
+      SB_URL: https://yxmbammlzweasjvpouqn.supabase.co
+      SB_ANON: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4bWJhbW1sendlYXNqdnBvdXFuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwOTg0MjgsImV4cCI6MjA5MjY3NDQyOH0.JZfWJcSyGWVQhj2OScCzTpLvEpVly6IQSXfcKQI-YI0
     steps:
 
       # ── 1. Live health + perf ──────────────────────────────────────────────
@@ -143,83 +149,83 @@ jobs:
           print(f"run_fail={run_fail}")
           PYEOF
 
-      # ── 3. DB sanity: server-side count via PostgREST count=exact ─────────
-      #     Returns the actual row count without pulling every row,
-      #     surfaces ERR loudly if the service_role key is missing/invalid,
-      #     counts days-off from time_entries (note='יום חופש'),
-      #     and adds an active-in-last-7-days metric using last_active_at.
-      - name: DB sanity check
+      # ── 3. DB stats via anon RPC (public qa_stats — no service_role key) ───
+      - name: DB stats
         id: db
-        env:
-          SUPABASE_URL: https://yxmbammlzweasjvpouqn.supabase.co
-          SUPABASE_KEY:  ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
-          if [ -z "$SUPABASE_KEY" ]; then
-            echo "::warning::SUPABASE_SERVICE_KEY secret is missing — DB counts will show ERR"
+          RESP=$(curl -s "$SB_URL/rest/v1/rpc/qa_stats" -X POST \
+            -H "apikey: $SB_ANON" -H "Authorization: Bearer $SB_ANON" \
+            -H "Content-Type: application/json" -d '{}' -w $'\nSTATUS:%{http_code}')
+          STATUS=$(printf '%s' "$RESP" | grep -o 'STATUS:[0-9]*' | cut -d: -f2)
+          printf '%s' "$RESP" | grep -v 'STATUS:[0-9]*$' > /tmp/stats.json
+          get() { python3 -c "import json;print(json.load(open('/tmp/stats.json')).get('$1','ERR'))" 2>/dev/null || echo ERR; }
+          if [ "$STATUS" = "200" ]; then
+            {
+              echo "db_ok=true"
+              echo "err_reason="
+              echo "total_users=$(get total_users)"
+              echo "active_7d=$(get active_7d)"
+              echo "admins=$(get admins)"
+              echo "total_entries=$(get total_entries)"
+              echo "total_daysoff=$(get total_leave)"
+            } >> $GITHUB_OUTPUT
+          else
             {
               echo "db_ok=false"
-              echo "err_reason=missing service_role key (add SUPABASE_SERVICE_KEY in repo secrets)"
-              echo "total_users=ERR"
-              echo "active_7d=ERR"
-              echo "pending=ERR"
-              echo "total_entries=ERR"
-              echo "total_daysoff=ERR"
+              echo "err_reason=qa_stats RPC failed (HTTP ${STATUS:-000})"
+              echo "total_users=ERR"; echo "active_7d=ERR"; echo "admins=ERR"
+              echo "total_entries=ERR"; echo "total_daysoff=ERR"
             } >> $GITHUB_OUTPUT
-            exit 0
           fi
 
-          # Fetch one row count via PostgREST's exact-count Content-Range header
-          # (Range: 0-0 → return zero data rows; count=exact → still get total in header).
-          # Echoes the integer count, or "ERR" on non-200.
-          sb_count() {
-            local table="$1" filter="$2"
-            local url="$SUPABASE_URL/rest/v1/$table?select=id"
-            [ -n "$filter" ] && url="$url&$filter"
-            local out
-            out=$(curl -sI "$url" \
-              -H "apikey: $SUPABASE_KEY" \
-              -H "Authorization: Bearer $SUPABASE_KEY" \
-              -H "Prefer: count=exact" \
-              -H "Range: 0-0" \
-              -w "STATUS:%{http_code}")
-            local status total
-            status=$(echo "$out" | grep -o 'STATUS:[0-9]*' | cut -d: -f2)
-            total=$(echo "$out" | grep -i '^content-range:' | tr -d '\r' \
-                    | awk -F'/' '{print $2}' | xargs)
-            if [ "$status" = "200" ] && [ -n "$total" ] && [ "$total" != "*" ]; then
-              echo "$total"
-            else
-              echo "ERR"
-            fi
-          }
-
-          USERS=$(sb_count profiles)
-          PENDING=$(sb_count profiles "status=eq.pending")
-          ENTRIES=$(sb_count time_entries)
-
-          # Days off now live in time_entries with note='יום חופש' (no more days_off table)
-          DAYOFF_NOTE=$(python3 -c "import urllib.parse; print(urllib.parse.quote('יום חופש'))")
-          DAYSOFF=$(sb_count time_entries "note=eq.$DAYOFF_NOTE")
-
-          # Active-in-last-7-days from profiles.last_active_at
-          SEVEN_DAYS_AGO=$(python3 -c "from datetime import datetime, timedelta, timezone; print((datetime.now(timezone.utc) - timedelta(days=7)).isoformat())")
-          ACTIVE=$(sb_count profiles "last_active_at=gte.$SEVEN_DAYS_AGO")
-
-          DB_OK=true
-          ERR_REASON=
-          if [ "$USERS" = "ERR" ] || [ "$ENTRIES" = "ERR" ]; then
-            DB_OK=false
-            ERR_REASON="service_role key invalid or DB unreachable"
+      # ── 3b. Registration self-test: real signup → profile+email → cleanup ──
+      - name: Registration self-test
+        id: reg
+        run: |
+          TS=$(date +%s)
+          EMAIL="qa-selftest+${TS}@example.com"
+          PASS="QaSelftest_${TS}Aa1!"
+          curl -s "$SB_URL/auth/v1/signup" -H "apikey: $SB_ANON" -H "Content-Type: application/json" \
+            -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\",\"data\":{\"name\":\"QA Selftest\"}}" > /tmp/sign.json
+          TOK=$(python3 -c "import json;print(json.load(open('/tmp/sign.json')).get('access_token','') or '')" 2>/dev/null || echo "")
+          NID=$(python3 -c "import json;print(json.load(open('/tmp/sign.json')).get('user',{}).get('id','') or '')" 2>/dev/null || echo "")
+          REG_OK=false; REG_REASON=""
+          if [ -n "$TOK" ] && [ -n "$NID" ]; then
+            curl -s "$SB_URL/rest/v1/profiles?id=eq.$NID&select=id,email,role" \
+              -H "apikey: $SB_ANON" -H "Authorization: Bearer $TOK" > /tmp/prof.json
+            HAS=$(python3 -c "import json;d=json.load(open('/tmp/prof.json'));print('1' if isinstance(d,list) and d and d[0].get('email') else '0')" 2>/dev/null || echo 0)
+            if [ "$HAS" = "1" ]; then REG_OK=true; else REG_REASON="signup ok but profile/email not created by trigger"; fi
+          else
+            REG_REASON=$(python3 -c "import json;d=json.load(open('/tmp/sign.json'));print(d.get('msg') or d.get('error_description') or d.get('error') or 'signup returned no session')" 2>/dev/null || echo "signup request failed")
           fi
+          # Always clean up self-test accounts (scoped RPC)
+          CLEANED=$(curl -s "$SB_URL/rest/v1/rpc/qa_cleanup_selftest" -X POST \
+            -H "apikey: $SB_ANON" -H "Authorization: Bearer $SB_ANON" -H "Content-Type: application/json" -d '{}' 2>/dev/null)
+          echo "reg_ok=$REG_OK"                      >> $GITHUB_OUTPUT
+          echo "reg_reason=$REG_REASON"              >> $GITHUB_OUTPUT
+          echo "reg_cleaned=${CLEANED:-0}"           >> $GITHUB_OUTPUT
 
+      # ── 3c. Stability checks: bundle loads, version.json, auth service up ──
+      - name: Stability checks
+        id: stab
+        run: |
+          BASE="https://alonktz.github.io/TimeManagmentApp"
+          HTML=$(curl -s "$BASE/?t=$(date +%s)")
+          JS=$(printf '%s' "$HTML" | grep -o 'assets/index-[A-Za-z0-9_-]*\.js' | head -1)
+          JS_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/$JS")
+          VER_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/version.json?t=$(date +%s)")
+          BUILD_ID=$(curl -s "$BASE/version.json?t=$(date +%s)" | python3 -c "import json,sys;print(json.load(sys.stdin).get('buildId','?'))" 2>/dev/null || echo "?")
+          AUTH_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$SB_URL/auth/v1/health" -H "apikey: $SB_ANON")
+          jsok=$([ "$JS_CODE" = "200" ] && echo true || echo false)
+          verok=$([ "$VER_CODE" = "200" ] && echo true || echo false)
+          authok=$([ "$AUTH_CODE" = "200" ] && echo true || echo false)
+          allok=false
+          [ "$jsok" = true ] && [ "$verok" = true ] && [ "$authok" = true ] && allok=true
           {
-            echo "db_ok=$DB_OK"
-            echo "err_reason=$ERR_REASON"
-            echo "total_users=$USERS"
-            echo "active_7d=$ACTIVE"
-            echo "pending=$PENDING"
-            echo "total_entries=$ENTRIES"
-            echo "total_daysoff=$DAYSOFF"
+            echo "js_ok=$jsok";     echo "js_code=$JS_CODE"
+            echo "ver_ok=$verok";   echo "build_id=$BUILD_ID"
+            echo "auth_ok=$authok"; echo "auth_code=$AUTH_CODE"
+            echo "stab_all_ok=$allok"
           } >> $GITHUB_OUTPUT
 
       # ── 4. Send email ──────────────────────────────────────────────────────
@@ -249,9 +255,17 @@ jobs:
           ERR_REASON:       ${{ steps.db.outputs.err_reason }}
           TOTAL_USERS:      ${{ steps.db.outputs.total_users }}
           ACTIVE_7D:        ${{ steps.db.outputs.active_7d }}
-          PENDING:          ${{ steps.db.outputs.pending }}
+          ADMINS:           ${{ steps.db.outputs.admins }}
           TOTAL_ENTRIES:    ${{ steps.db.outputs.total_entries }}
           TOTAL_DAYSOFF:    ${{ steps.db.outputs.total_daysoff }}
+          REG_OK:           ${{ steps.reg.outputs.reg_ok }}
+          REG_REASON:       ${{ steps.reg.outputs.reg_reason }}
+          REG_CLEANED:      ${{ steps.reg.outputs.reg_cleaned }}
+          JS_OK:            ${{ steps.stab.outputs.js_ok }}
+          VER_OK:           ${{ steps.stab.outputs.ver_ok }}
+          AUTH_OK:          ${{ steps.stab.outputs.auth_ok }}
+          STAB_ALL_OK:      ${{ steps.stab.outputs.stab_all_ok }}
+          BUILD_ID:         ${{ steps.stab.outputs.build_id }}
         run: |
           python3 << 'PYEOF'
           import os, json
@@ -272,25 +286,30 @@ jobs:
                   return '<span style="color:#dc2626;font-weight:700">ERR</span>'
               return str(val)
 
-          pending = v('PENDING')
-          pending_badge = (
-              f'<span style="background:#fee2e2;color:#dc2626;padding:1px 7px;'
-              f'border-radius:8px;font-weight:700">{pending}</span>'
-              if pending not in ('0','N/A','ERR') else num(pending)
-          )
+          reg_ok  = v('REG_OK').lower() == 'true'
+          stab_ok = v('STAB_ALL_OK').lower() == 'true'
+          reg_badge  = '✅ OK' if reg_ok  else '🔴 FAIL'
+          stab_badge = '✅ OK' if stab_ok else '🔴 FAIL'
 
-          # Red banner shown right under the header when DB read failed
+          # Red banner(s) under the header for any failed check
+          problems = []
           err_reason = v('ERR_REASON')
-          err_banner = ''
           if err_reason and err_reason not in ('N/A', ''):
-              err_banner = (
+              problems.append(('DB read error', err_reason))
+          if not reg_ok:
+              problems.append(('Registration self-test failed', v('REG_REASON') or 'unknown'))
+          if not stab_ok:
+              problems.append(('Stability check failed',
+                               f"JS {'ok' if v('JS_OK')=='true' else 'DOWN'} · version.json {'ok' if v('VER_OK')=='true' else 'DOWN'} · auth {'ok' if v('AUTH_OK')=='true' else 'DOWN'}"))
+          err_banner = ''
+          for title, detail in problems:
+              err_banner += (
                   f'<table width="100%" style="background:#fee2e2;border:1px solid #fca5a5;'
-                  f'border-radius:10px;margin-bottom:14px;border-collapse:collapse">'
+                  f'border-radius:10px;margin-bottom:10px;border-collapse:collapse">'
                   f'<tr><td style="padding:14px 18px">'
                   f'<div style="font-size:11px;color:#dc2626;font-weight:700;'
-                  f'text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">'
-                  f'⚠️ DB read error</div>'
-                  f'<div style="font-size:13px;color:#7f1d1d">{err_reason}</div>'
+                  f'text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">⚠️ {title}</div>'
+                  f'<div style="font-size:13px;color:#7f1d1d">{detail}</div>'
                   f'</td></tr></table>'
               )
 
@@ -344,13 +363,23 @@ jobs:
                 <table style="margin-top:12px;border-collapse:collapse">
                   <tr>
                     <td style="background:rgba(255,255,255,.18);border-radius:7px;
-                               padding:7px 12px;color:#fff;font-size:13px;font-weight:600;margin-left:8px">
+                               padding:7px 12px;color:#fff;font-size:13px;font-weight:600">
                       {app_badge} &nbsp;{v('HTTP_STATUS')} · {v('RESPONSE_MS')}ms
                     </td>
-                    <td style="width:10px"></td>
+                    <td style="width:8px"></td>
                     <td style="background:rgba(255,255,255,.18);border-radius:7px;
                                padding:7px 12px;color:#fff;font-size:13px;font-weight:600">
                       🗄️ DB {db_badge}
+                    </td>
+                    <td style="width:8px"></td>
+                    <td style="background:rgba(255,255,255,.18);border-radius:7px;
+                               padding:7px 12px;color:#fff;font-size:13px;font-weight:600">
+                      👤 הרשמה {reg_badge}
+                    </td>
+                    <td style="width:8px"></td>
+                    <td style="background:rgba(255,255,255,.18);border-radius:7px;
+                               padding:7px 12px;color:#fff;font-size:13px;font-weight:600">
+                      🛡️ יציבות {stab_badge}
                     </td>
                   </tr>
                 </table>
@@ -405,9 +434,31 @@ jobs:
                   {card("🗄️ Database", [
                       ("Users", num(v("TOTAL_USERS")), False),
                       ("Active (last 7 days)", num(v("ACTIVE_7D")), True),
-                      ("Pending approval", pending_badge, False),
+                      ("Admins", num(v("ADMINS")), False),
                       ("Time entries", num(v("TOTAL_ENTRIES")), False),
-                      ("Days off (יום חופש)", num(v("TOTAL_DAYSOFF")), False),
+                      ("Leave days (חופש/מחלה/מילואים)", num(v("TOTAL_DAYSOFF")), False),
+                  ])}
+                </td>
+              </tr>
+            </table>
+
+            <!-- QA self-tests + stability -->
+            <table width="100%" style="border-collapse:collapse;margin-bottom:14px">
+              <tr>
+                <td width="49%" style="vertical-align:top;padding-left:7px">
+                  {card("👤 Registration self-test", [
+                      ("Result", f'<span style="color:{"#16a34a" if reg_ok else "#dc2626"};font-weight:700">{reg_badge}</span>', False),
+                      ("Flow", "signup → profile → email", False),
+                      ("Reason" if not reg_ok else "Cleaned up",
+                       (v("REG_REASON") if not reg_ok else f'{v("REG_CLEANED")} test user(s)'), False),
+                  ])}
+                </td>
+                <td width="49%" style="vertical-align:top;padding-right:7px">
+                  {card("🛡️ Stability", [
+                      ("JS bundle", '✅' if v('JS_OK')=='true' else '🔴', False),
+                      ("version.json", '✅' if v('VER_OK')=='true' else '🔴', False),
+                      ("Auth service", '✅' if v('AUTH_OK')=='true' else '🔴', False),
+                      ("Live build id", f'<code style="font-size:11px;background:#f5f5f4;padding:1px 5px;border-radius:4px">{v("BUILD_ID")}</code>', False),
                   ])}
                 </td>
               </tr>
@@ -440,10 +491,11 @@ jobs:
           </div>
           """
 
+          all_ok = app_ok and db_ok and reg_ok and stab_ok
           subject = (
-              f"[{'OK' if app_ok else 'DOWN'}] Hour Counter Dev QA {today} — "
-              f"{v('BUNDLE_KB')}KB · {v('RESPONSE_MS')}ms · "
-              f"CI {v('RUN_PASS')}/{int(v('RUN_PASS') or 0)+int(v('RUN_FAIL') or 0)}"
+              f"[{'OK' if all_ok else 'ISSUE'}] Hour Counter Dev QA {today} — "
+              f"reg {'OK' if reg_ok else 'FAIL'} · stability {'OK' if stab_ok else 'FAIL'} · "
+              f"{v('RESPONSE_MS')}ms · CI {v('RUN_PASS')}/{int(v('RUN_PASS') or 0)+int(v('RUN_FAIL') or 0)}"
           )
 
           payload = json.dumps({
