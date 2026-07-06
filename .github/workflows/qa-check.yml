@@ -177,6 +177,8 @@ jobs:
               echo "total_users=$(get total_users)"
               echo "active_7d=$(get active_7d)"
               echo "admins=$(get admins)"
+              echo "inactive_14d=$(get inactive_14d)"
+              echo "slow_queries=$(get slow_queries_24h)"
               echo "total_entries=$(get total_entries)"
               echo "total_daysoff=$(get total_leave)"
             } >> $GITHUB_OUTPUT
@@ -185,6 +187,7 @@ jobs:
               echo "db_ok=false"
               echo "err_reason=qa_stats RPC failed (HTTP ${STATUS:-000})"
               echo "total_users=ERR"; echo "active_7d=ERR"; echo "admins=ERR"
+              echo "inactive_14d=ERR"; echo "slow_queries=ERR"
               echo "total_entries=ERR"; echo "total_daysoff=ERR"
             } >> $GITHUB_OUTPUT
           fi
@@ -267,6 +270,8 @@ jobs:
           TOTAL_USERS:      ${{ steps.db.outputs.total_users }}
           ACTIVE_7D:        ${{ steps.db.outputs.active_7d }}
           ADMINS:           ${{ steps.db.outputs.admins }}
+          INACTIVE_14D:     ${{ steps.db.outputs.inactive_14d }}
+          SLOW_QUERIES:     ${{ steps.db.outputs.slow_queries }}
           TOTAL_ENTRIES:    ${{ steps.db.outputs.total_entries }}
           TOTAL_DAYSOFF:    ${{ steps.db.outputs.total_daysoff }}
           REG_OK:           ${{ steps.reg.outputs.reg_ok }}
@@ -301,6 +306,13 @@ jobs:
           stab_ok = v('STAB_ALL_OK').lower() == 'true'
           reg_badge  = '✅ OK' if reg_ok  else '🔴 FAIL'
           stab_badge = '✅ OK' if stab_ok else '🔴 FAIL'
+
+          # Slow queries (>2.5s in 24h) — red when any, plain otherwise
+          slow = v('SLOW_QUERIES')
+          slow_badge = (
+              f'<span style="color:#dc2626;font-weight:700">{slow}</span>'
+              if slow not in ('0', 'N/A', 'ERR') else num(slow)
+          )
 
           # Red banner(s) under the header for any failed check
           problems = []
@@ -448,8 +460,10 @@ jobs:
                 <td width="49%" style="vertical-align:top;padding-right:7px">
                   {card("🗄️ Database", [
                       ("Users", num(v("TOTAL_USERS")), False),
-                      ("Active (last 7 days)", num(v("ACTIVE_7D")), True),
                       ("Admins", num(v("ADMINS")), False),
+                      ("Active (last 7 days)", num(v("ACTIVE_7D")), True),
+                      ("Slow queries >2.5s (24h)", slow_badge, False),
+                      ("Inactive (>14 days)", num(v("INACTIVE_14D")), False),
                       ("Time entries", num(v("TOTAL_ENTRIES")), False),
                       ("Leave days (חופש/מחלה/מילואים)", num(v("TOTAL_DAYSOFF")), False),
                   ])}

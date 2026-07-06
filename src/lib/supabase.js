@@ -18,6 +18,29 @@ const sb = {
     return h;
   },
 
+  // ── Perf logging ──────────────────────────────────────────────────────────
+  // Times a request and, if it exceeds the threshold, records a perf_log row
+  // (fire-and-forget) so the QA bot can report slow queries in the last 24h.
+  _slowMs: 2500,
+  async _req(label, url, opts) {
+    const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const t0 = now();
+    const r = await fetch(url, opts);
+    const ms = Math.round(now() - t0);
+    if (ms > this._slowMs) this._logSlow(label, ms);
+    return r;
+  },
+  _logSlow(label, ms) {
+    try {
+      // Raw fetch (not _req) → never recurses; never awaited → never blocks.
+      fetch(`${this._url}/rest/v1/perf_log`, {
+        method: 'POST',
+        headers: this.headers({ Prefer: 'return=minimal' }),
+        body: JSON.stringify({ label, duration_ms: ms }),
+      }).catch(() => {});
+    } catch { /* logging must never throw */ }
+  },
+
   // ── Auth ────────────────────────────────────────────────────────────────
   async signUp(email, password, name) {
     const r = await fetch(`${this._url}/auth/v1/signup`, {
@@ -59,7 +82,7 @@ const sb = {
 
   // ── Generic REST helpers ─────────────────────────────────────────────────
   async select(table, params = '') {
-    const r = await fetch(`${this._url}/rest/v1/${table}?${params}`, {
+    const r = await this._req(`select ${table}`, `${this._url}/rest/v1/${table}?${params}`, {
       headers: this.headers({ Prefer: 'return=representation' }),
     });
     if (!r.ok) {
@@ -71,7 +94,7 @@ const sb = {
   // Call a Postgres function (RPC). Used for anon-safe checks that RLS would
   // otherwise block (e.g. email_exists against auth.users).
   async rpc(fn, args = {}) {
-    const r = await fetch(`${this._url}/rest/v1/rpc/${fn}`, {
+    const r = await this._req(`rpc ${fn}`, `${this._url}/rest/v1/rpc/${fn}`, {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify(args),
@@ -84,7 +107,7 @@ const sb = {
   },
   async upsert(table, body, onConflict) {
     const qs = onConflict ? `?on_conflict=${onConflict}` : '';
-    const r = await fetch(`${this._url}/rest/v1/${table}${qs}`, {
+    const r = await this._req(`upsert ${table}`, `${this._url}/rest/v1/${table}${qs}`, {
       method: 'POST',
       headers: this.headers({ Prefer: 'resolution=merge-duplicates,return=representation' }),
       body: JSON.stringify(body),
@@ -96,7 +119,7 @@ const sb = {
     return r.json();
   },
   async update(table, body, matchCol, matchVal) {
-    const r = await fetch(
+    const r = await this._req(`update ${table}`,
       `${this._url}/rest/v1/${table}?${matchCol}=eq.${encodeURIComponent(matchVal)}`,
       {
         method: 'PATCH',
@@ -111,7 +134,7 @@ const sb = {
     return r.json();
   },
   async delete(table, matchCol, matchVal) {
-    const r = await fetch(
+    const r = await this._req(`delete ${table}`,
       `${this._url}/rest/v1/${table}?${matchCol}=eq.${encodeURIComponent(matchVal)}`,
       { method: 'DELETE', headers: this.headers() }
     );
@@ -123,7 +146,7 @@ const sb = {
   async deleteMulti(table, col, vals) {
     if (!vals.length) return;
     const list = vals.map((v) => encodeURIComponent(v)).join(',');
-    const r = await fetch(`${this._url}/rest/v1/${table}?${col}=in.(${list})`, {
+    const r = await this._req(`deleteMulti ${table}`, `${this._url}/rest/v1/${table}?${col}=in.(${list})`, {
       method: 'DELETE',
       headers: this.headers(),
     });
