@@ -117,7 +117,18 @@ jobs:
 
           full_master_sha = master.get('sha', '')
           deploy_synced = full_master_sha.startswith(pages_deployed_sha) if pages_deployed_sha else master_sha == pages_sha
-          deploy_lag = 'up to date' if deploy_synced else f'master is ahead ({master_sha} vs deployed {pages_deployed_sha})'
+          if deploy_synced:
+              deploy_lag = 'up to date'
+          else:
+              # A just-pushed commit is still deploying (deploys finish in ~2 min).
+              # Only flag a real lag once master has been undeployed for a while,
+              # so pushing right before a QA run doesn't raise a false alarm.
+              try:
+                  _dt = datetime.fromisoformat(master_date.replace('Z', '+00:00'))
+                  _mins = (datetime.now(timezone.utc) - _dt).total_seconds() / 60
+              except Exception:
+                  _mins = 999
+              deploy_lag = 'deploying' if _mins < 15 else f'master is ahead ({master_sha} vs deployed {pages_deployed_sha})'
 
           # PRs and issues
           open_prs    = len(prs) if isinstance(prs, list) else 0
@@ -313,9 +324,13 @@ jobs:
                   f'</td></tr></table>'
               )
 
-          deploy_synced = v('DEPLOY_LAG') == 'up to date'
-          deploy_color  = '#16a34a' if deploy_synced else '#d97706'
-          deploy_text   = '✅ in sync' if deploy_synced else f'⚠️ {v("DEPLOY_LAG")}'
+          dl = v('DEPLOY_LAG')
+          if dl == 'up to date':
+              deploy_color, deploy_text = '#16a34a', '✅ in sync'
+          elif dl == 'deploying':
+              deploy_color, deploy_text = '#2563eb', '⏳ deploying…'
+          else:
+              deploy_color, deploy_text = '#d97706', f'⚠️ {dl}'
 
           run_fail = v('RUN_FAIL')
           ci_color = '#16a34a' if run_fail == '0' else '#d97706'
