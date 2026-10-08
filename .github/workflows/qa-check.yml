@@ -21,13 +21,13 @@ jobs:
           from datetime import datetime
           from zoneinfo import ZoneInfo
           local_now = datetime.now(ZoneInfo("Asia/Jerusalem"))
-          print(f"Jerusalem local time: {local_now.isoformat()}")
+          print(f"local_time={local_now.isoformat()}")
           print(f"run_qa={'true' if local_now.hour == 6 else 'false'}")
           PY
 
   qa:
     needs: schedule_gate
-    if: github.event_name != 'schedule' || needs.schedule_gate.outputs.run_qa == 'true'
+    if: always() && (github.event_name != 'schedule' || needs.schedule_gate.outputs.run_qa == 'true')
     runs-on: ubuntu-latest
     env:
       USER_GOAL: "50"
