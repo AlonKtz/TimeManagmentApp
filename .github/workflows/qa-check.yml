@@ -262,6 +262,13 @@ jobs:
             echo "stab_all_ok=$allok"
           } >> $GITHUB_OUTPUT
 
+      # ── 3d. Aggregate suspicious-activity indicators from Supabase logs ──────
+      - name: Scan Supabase activity logs (last 24 hours)
+        id: security
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: yxmbammlzweasjvpouqn
+        run: python3 .github/scripts/security-monitor.py
       # ── 4. Send email ──────────────────────────────────────────────────────
       - name: Send email summary
         if: always()
@@ -306,6 +313,15 @@ jobs:
           AUTH_OK:          ${{ steps.stab.outputs.auth_ok }}
           STAB_ALL_OK:      ${{ steps.stab.outputs.stab_all_ok }}
           BUILD_ID:         ${{ steps.stab.outputs.build_id }}
+          SECURITY_STATUS:  ${{ steps.security.outputs.security_status }}
+          SECURITY_ERROR:   ${{ steps.security.outputs.security_error }}
+          FAILED_SIGNINS:   ${{ steps.security.outputs.failed_signins }}
+          REPEAT_FAILURE_SOURCES: ${{ steps.security.outputs.repeat_failure_sources }}
+          RATE_LIMITED_REQUESTS: ${{ steps.security.outputs.rate_limited_requests }}
+          REPEAT_RATE_LIMIT_SOURCES: ${{ steps.security.outputs.repeat_rate_limit_sources }}
+          API_5XX:           ${{ steps.security.outputs.api_5xx }}
+          DB_ERRORS:         ${{ steps.security.outputs.db_errors }}
+          PERMISSION_DENIALS: ${{ steps.security.outputs.permission_denials }}
         run: |
           python3 << 'PYEOF'
           import os, json
@@ -318,6 +334,15 @@ jobs:
           today     = today_date.strftime('%d/%m/%Y')
 
           tests_ok = v('APP_TESTS_OUTCOME') == 'success'
+          sec_status = v('SECURITY_STATUS')
+          sec_ok = sec_status == 'clear'
+          sec_labels = {
+              'clear': '✅ CLEAR',
+              'review': '⚠️ REVIEW',
+              'not_configured': '⚠️ NOT CONNECTED',
+              'unavailable': '🔴 UNAVAILABLE',
+          }
+          security_badge = sec_labels.get(sec_status, '🔴 UNKNOWN')
           tests_badge = '✅ PASS' if tests_ok else f'🔴 FAIL ({v("APP_TESTS_OUTCOME")})'
 
           goal = int(v('USER_GOAL') or 50)
@@ -343,7 +368,7 @@ jobs:
               goal_color = '#dc2626'
               goal_pace = 'user count unavailable'
 
-          hdr_color = '#0f766e' if app_ok and tests_ok else '#dc2626'
+          hdr_color = '#0f766e' if app_ok and tests_ok and sec_ok else '#dc2626'
           app_badge = '✅ LIVE' if app_ok else '🔴 DOWN'
           db_badge  = '✅ OK'   if db_ok  else '🔴 ERR'
 
@@ -367,6 +392,14 @@ jobs:
 
           # Red banner(s) under the header for any failed check
           problems = []
+          if sec_status == 'review':
+              problems.append(('Security activity needs review',
+                               f"{v('FAILED_SIGNINS')} failed sign-ins · {v('REPEAT_FAILURE_SOURCES')} source(s) with 10+ failures · {v('RATE_LIMITED_REQUESTS')} rate-limited requests"))
+          elif sec_status == 'not_configured':
+              problems.append(('Security logs are not connected',
+                               'Add the project-scoped read-only SUPABASE_ACCESS_TOKEN secret in GitHub Actions settings.'))
+          elif sec_status == 'unavailable':
+              problems.append(('Security log scan unavailable', v('SECURITY_ERROR') or 'unknown error'))
           err_reason = v('ERR_REASON')
           if err_reason and err_reason not in ('N/A', ''):
               problems.append(('DB read error', err_reason))
@@ -525,6 +558,24 @@ jobs:
               </tr>
             </table>
 
+            <!-- Security activity -->
+            <table width="100%" style="border-collapse:collapse;margin-bottom:14px">
+              <tr><td>
+                {card("🛡️ Supabase security activity (24h)", [
+                    ("Scan status", security_badge, False),
+                    ("Failed sign-in requests", num(v("FAILED_SIGNINS")), False),
+                    ("Sources with 10+ failed sign-ins", num(v("REPEAT_FAILURE_SOURCES")), False),
+                    ("Rate-limited requests", num(v("RATE_LIMITED_REQUESTS")), False),
+                    ("Sources with 10+ rate limits", num(v("REPEAT_RATE_LIMIT_SOURCES")), False),
+                    ("API 5xx responses", num(v("API_5XX")), False),
+                    ("Database permission denials", num(v("PERMISSION_DENIALS")), False),
+                    ("Other database errors", num(v("DB_ERRORS")), False),
+                  ])}
+                <div style="font-size:10px;color:#a8a29e;margin:8px 2px 0">
+                  Repeated patterns are review indicators, not confirmation of an attack. IPs and raw logs are not included in this email.
+                </div>
+              </td></tr>
+            </table>
             <!-- App behavior checks -->
             <table width="100%" style="border-collapse:collapse;margin-bottom:14px">
               <tr><td>
@@ -584,7 +635,7 @@ jobs:
           </div>
           """
 
-          all_ok = app_ok and db_ok and reg_ok and stab_ok and tests_ok
+          all_ok = app_ok and db_ok and reg_ok and stab_ok and tests_ok and sec_ok
           subject = (
               f"[{'OK' if all_ok else 'ISSUE'}] Timey QA {today} — "
               f"tests {'OK' if tests_ok else 'FAIL'} · reg {'OK' if reg_ok else 'FAIL'} · stability {'OK' if stab_ok else 'FAIL'} · "
@@ -610,6 +661,10 @@ jobs:
         run: |
           if [ "${{ steps.app_tests.outcome }}" != "success" ]; then
             echo "App regression tests failed."
+            exit 1
+          fi
+          if [ "${{ steps.security.outputs.security_status }}" != "clear" ]; then
+            echo "Supabase security log scan status: ${{ steps.security.outputs.security_status }}"
             exit 1
           fi
           if [ "${{ steps.health.outputs.app_ok }}" != "true" ] || [ "${{ steps.db.outputs.db_ok }}" != "true" ] || [ "${{ steps.reg.outputs.reg_ok }}" != "true" ] || [ "${{ steps.stab.outputs.stab_all_ok }}" != "true" ]; then
