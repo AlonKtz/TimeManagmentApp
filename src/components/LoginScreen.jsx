@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import PasswordInput from './PasswordInput';
+import timeyWordmark from '../assets/timey-wordmark.jpg';
 
 export default function LoginScreen({ auth }) {
   const [mode, setMode] = useState('login'); // 'login' | 'register'
@@ -31,13 +32,8 @@ export default function LoginScreen({ auth }) {
   return (
     <div className="login-wrapper">
       <div className="login-card">
-        <div className="login-logo">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="12 6 12 12 16 14"/>
-          </svg>
-        </div>
-        <h1 className="login-title">Timey</h1>
+        <img className="login-wordmark" src={timeyWordmark} alt="Timey" />
+        <h1 className="sr-only">Timey</h1>
         <p className="login-subtitle">
           {mode === 'login' ? 'התחברות למערכת' : 'יצירת חשבון חדש'}
         </p>

@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import {
-  IClock, IGrid, IList, IPalmtree, IChart, IUser, ISettings,
+  IGrid, IList, IPalmtree, IChart, IUser, ISettings,
   IChevronL, IChevronR, ISun, IMoon, ILogout, IMenu, IX, IRefresh, IShare, IAddHome,
 } from './icons';
 import { useInstallPrompt } from '../hooks/useInstallPrompt';
 import { APP_VERSION } from '../constants';
+import timeyClockMark from '../assets/timey-clock-mark.svg';
 
 function readCollapsed() {
   return typeof document !== 'undefined' &&
@@ -141,7 +142,7 @@ export default function Sidebar({ tab, setTab, user, onLogout, working, pendingC
 
         <div className="sidebar-brand">
           <div className="sidebar-brand-mark">
-            <IClock style={{ width: 22, height: 22 }} />
+            <img src={timeyClockMark} alt="" aria-hidden="true" />
           </div>
           <div className="sidebar-brand-text">
             <strong>Timey</strong>
