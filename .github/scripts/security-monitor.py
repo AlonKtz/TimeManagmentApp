@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError, URLError
@@ -45,6 +46,17 @@ def set_summary(status: str, values: dict[str, str], note: str) -> None:
         for label, key in labels:
             summary.write(f"| {label} | {values.get(key, 'N/A')} |\n")
         summary.write(f"\n{note}\n")
+
+def safe_api_error(value: object) -> str:
+    """Keep API diagnostics useful without leaking tokens or unsafe markup."""
+    if isinstance(value, dict):
+        value = value.get("message") or value.get("error") or value.get("code") or "unknown API error"
+    detail = " ".join(str(value).split())
+    if TOKEN:
+        detail = detail.replace(TOKEN, "[redacted]")
+    detail = re.sub(r"[^A-Za-z0-9 _.,:()/+\-]", " ", detail)
+    detail = " ".join(detail.split())[:240]
+    return detail or "unknown API error"
 
 def finish(status: str, *, error: str = "", counts: dict[str, int] | None = None) -> int:
     safe_counts = counts or {}
@@ -157,8 +169,10 @@ def main() -> int:
     except (json.JSONDecodeError, OSError):
         return finish("unavailable", error="invalid response")
 
-    if not isinstance(payload, dict) or payload.get("error"):
-        return finish("unavailable", error="logs API returned an error")
+    if not isinstance(payload, dict):
+        return finish("unavailable", error="invalid response shape")
+    if payload.get("error"):
+        return finish("unavailable", error=f"logs API error: {safe_api_error(payload['error'])}")
     rows = payload.get("result")
     if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
         return finish("unavailable", error="unexpected logs API response")
