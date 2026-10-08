@@ -32,9 +32,9 @@ def set_summary(status: str, values: dict[str, str], note: str) -> None:
         return
     labels = [
         ("Failed sign-ins", "failed_signins"),
-        ("Sources with 10+ failed sign-ins", "repeat_failure_sources"),
+        ("Sources with failed sign-ins", "failed_signin_sources"),
         ("Rate-limited requests", "rate_limited_requests"),
-        ("Sources with 10+ rate limits", "repeat_rate_limit_sources"),
+        ("Sources with rate-limited requests", "rate_limited_sources"),
         ("API 5xx responses", "api_5xx"),
         ("Database errors", "db_errors"),
         ("Permission denials", "permission_denials"),
@@ -65,9 +65,9 @@ def finish(status: str, *, error: str = "", counts: dict[str, int] | None = None
         "security_error": error,
         **{key: str(safe_counts.get(key, "N/A")) for key in (
             "failed_signins",
-            "repeat_failure_sources",
+            "failed_signin_sources",
             "rate_limited_requests",
-            "repeat_rate_limit_sources",
+            "rate_limited_sources",
             "api_5xx",
             "db_errors",
             "permission_denials",
@@ -95,58 +95,48 @@ def main() -> int:
     start_sql = start.strftime("%Y-%m-%d %H:%M:%S")
     end_sql = end.strftime("%Y-%m-%d %H:%M:%S")
     sql = f"""
-    WITH per_client AS (
-      SELECT
-        log_attributes['request.headers.cf_connecting_ip'] AS client_ip,
-        countIf(
-          positionCaseInsensitive(log_attributes['request.path'], '/auth/v1/token') > 0
-          AND toInt32OrZero(log_attributes['response.status_code']) IN (400, 401, 403)
-        ) AS failed_signins,
-        countIf(toInt32OrZero(log_attributes['response.status_code']) = 429) AS rate_limited
-      FROM logs
-      WHERE source = 'edge_logs'
-        AND timestamp >= toDateTime64('{start_sql}', 3, 'UTC')
-        AND timestamp < toDateTime64('{end_sql}', 3, 'UTC')
-      GROUP BY client_ip
-    ),
-    per_client_summary AS (
-      SELECT
-        sum(failed_signins) AS failed_signins,
-        countIf(client_ip != '' AND failed_signins >= 10) AS repeat_failure_sources,
-        sum(rate_limited) AS rate_limited_requests,
-        countIf(client_ip != '' AND rate_limited >= 10) AS repeat_rate_limit_sources
-      FROM per_client
-    ),
-    service_errors AS (
-      SELECT
-        countIf(
-          source = 'edge_logs'
-          AND toInt32OrZero(log_attributes['response.status_code']) BETWEEN 500 AND 599
-        ) AS api_5xx,
-        countIf(
-          source = 'postgres_logs'
-          AND log_attributes['parsed.error_severity'] IN ('ERROR', 'FATAL', 'PANIC')
-          AND log_attributes['parsed.sql_state_code'] NOT IN ('25006', '53100', '57P03')
-        ) AS db_errors,
-        countIf(
-          source = 'postgres_logs'
-          AND log_attributes['parsed.sql_state_code'] = '42501'
-        ) AS permission_denials
-      FROM logs
-      WHERE source IN ('edge_logs', 'postgres_logs')
-        AND timestamp >= toDateTime64('{start_sql}', 3, 'UTC')
-        AND timestamp < toDateTime64('{end_sql}', 3, 'UTC')
-    )
     SELECT
-      per_client_summary.failed_signins AS failed_signins,
-      per_client_summary.repeat_failure_sources AS repeat_failure_sources,
-      per_client_summary.rate_limited_requests AS rate_limited_requests,
-      per_client_summary.repeat_rate_limit_sources AS repeat_rate_limit_sources,
-      service_errors.api_5xx AS api_5xx,
-      service_errors.db_errors AS db_errors,
-      service_errors.permission_denials AS permission_denials
-    FROM per_client_summary
-    CROSS JOIN service_errors    """
+      countIf(
+        source = 'edge_logs'
+        AND positionCaseInsensitive(log_attributes['request.path'], '/auth/v1/token') > 0
+        AND toInt32OrZero(log_attributes['response.status_code']) IN (400, 401, 403)
+      ) AS failed_signins,
+      uniqExactIf(
+        log_attributes['request.headers.cf_connecting_ip'],
+        source = 'edge_logs'
+        AND positionCaseInsensitive(log_attributes['request.path'], '/auth/v1/token') > 0
+        AND toInt32OrZero(log_attributes['response.status_code']) IN (400, 401, 403)
+        AND log_attributes['request.headers.cf_connecting_ip'] != ''
+      ) AS failed_signin_sources,
+      countIf(
+        source = 'edge_logs'
+        AND toInt32OrZero(log_attributes['response.status_code']) = 429
+      ) AS rate_limited_requests,
+      uniqExactIf(
+        log_attributes['request.headers.cf_connecting_ip'],
+        source = 'edge_logs'
+        AND toInt32OrZero(log_attributes['response.status_code']) = 429
+        AND log_attributes['request.headers.cf_connecting_ip'] != ''
+      ) AS rate_limited_sources,
+      countIf(
+        source = 'edge_logs'
+        AND toInt32OrZero(log_attributes['response.status_code']) BETWEEN 500 AND 599
+      ) AS api_5xx,
+      countIf(
+        source = 'postgres_logs'
+        AND log_attributes['parsed.error_severity'] IN ('ERROR', 'FATAL', 'PANIC')
+        AND log_attributes['parsed.sql_state_code'] NOT IN ('25006', '53100', '57P03')
+      ) AS db_errors,
+      countIf(
+        source = 'postgres_logs'
+        AND log_attributes['parsed.sql_state_code'] = '42501'
+      ) AS permission_denials
+    FROM logs
+    WHERE source IN ('edge_logs', 'postgres_logs')
+      AND timestamp >= toDateTime64('{start_sql}', 3, 'UTC')
+      AND timestamp < toDateTime64('{end_sql}', 3, 'UTC')
+    LIMIT 1
+    """
     params = urlencode({
         "sql": sql,
         "iso_timestamp_start": start.isoformat().replace("+00:00", "Z"),
@@ -179,9 +169,9 @@ def main() -> int:
 
     keys = (
         "failed_signins",
-        "repeat_failure_sources",
+        "failed_signin_sources",
         "rate_limited_requests",
-        "repeat_rate_limit_sources",
+        "rate_limited_sources",
         "api_5xx",
         "db_errors",
         "permission_denials",
@@ -194,9 +184,9 @@ def main() -> int:
     # These thresholds identify patterns that merit review; they do not establish malicious intent.
     alert = (
         counts["failed_signins"] >= 25
-        or counts["repeat_failure_sources"] > 0
+        or counts["failed_signin_sources"] > 0
         or counts["rate_limited_requests"] >= 25
-        or counts["repeat_rate_limit_sources"] > 0
+        or counts["rate_limited_sources"] > 0
         or counts["permission_denials"] >= 20
     )
     return finish("review" if alert else "clear", counts=counts)
