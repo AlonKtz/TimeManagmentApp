@@ -181,12 +181,10 @@ def main() -> int:
     except (TypeError, ValueError):
         return finish("unavailable", error="invalid aggregate values")
 
-    # These thresholds identify patterns that merit review; they do not establish malicious intent.
+    # Aggregate thresholds are review indicators, not proof of an attack.
     alert = (
         counts["failed_signins"] >= 25
-        or counts["failed_signin_sources"] > 0
         or counts["rate_limited_requests"] >= 25
-        or counts["rate_limited_sources"] > 0
         or counts["permission_denials"] >= 20
     )
     return finish("review" if alert else "clear", counts=counts)
