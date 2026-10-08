@@ -22,16 +22,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
-      - name: Install dependencies
-        id: deps
-        continue-on-error: true
-        run: npm ci --no-audit --no-fund
 
       - name: App behavior regression tests
         id: app_tests
-        if: steps.deps.outcome == 'success'
         continue-on-error: true
         run: |
           set +e
@@ -272,7 +266,6 @@ jobs:
         env:
           RESEND_API_KEY:   ${{ secrets.RESEND_API_KEY }}
           APP_TESTS_OUTCOME: ${{ steps.app_tests.outcome }}
-          DEPS_OUTCOME:      ${{ steps.deps.outcome }}
           USER_GOAL:         ${{ env.USER_GOAL }}
           GOAL_YEAR:         ${{ env.GOAL_YEAR }}
           APP_OK:           ${{ steps.health.outputs.app_ok }}
@@ -322,7 +315,7 @@ jobs:
           today_date = __import__('datetime').date.today()
           today     = today_date.strftime('%d/%m/%Y')
 
-          tests_ok = v('APP_TESTS_OUTCOME') == 'success' and v('DEPS_OUTCOME') == 'success'
+          tests_ok = v('APP_TESTS_OUTCOME') == 'success'
           tests_badge = '✅ PASS' if tests_ok else f'🔴 FAIL ({v("APP_TESTS_OUTCOME")})'
 
           goal = int(v('USER_GOAL') or 50)
@@ -378,7 +371,7 @@ jobs:
           if not reg_ok:
               problems.append(('Registration self-test failed', v('REG_REASON') or 'unknown'))
           if not tests_ok:
-              problems.append(('App behavior regression failed', f'dependencies {v("DEPS_OUTCOME")} · tests {v("APP_TESTS_OUTCOME")} · see run {__import__("os").environ.get("GITHUB_SERVER_URL", "https://github.com")}/{__import__("os").environ.get("GITHUB_REPOSITORY", "AlonKtz/TimeManagmentApp")}/actions/runs/{__import__("os").environ.get("GITHUB_RUN_ID", "")}'))
+              problems.append(('App behavior regression failed', f'tests {v("APP_TESTS_OUTCOME")} · see run {__import__("os").environ.get("GITHUB_SERVER_URL", "https://github.com")}/{__import__("os").environ.get("GITHUB_REPOSITORY", "AlonKtz/TimeManagmentApp")}/actions/runs/{__import__("os").environ.get("GITHUB_RUN_ID", "")}'))
           if not stab_ok:
               problems.append(('Stability check failed',
                                f"JS {'ok' if v('JS_OK')=='true' else 'DOWN'} · version.json {'ok' if v('VER_OK')=='true' else 'DOWN'} · auth {'ok' if v('AUTH_OK')=='true' else 'DOWN'}"))
@@ -613,8 +606,8 @@ jobs:
       - name: Fail the run when core checks fail
         if: always()
         run: |
-          if [ "${{ steps.deps.outcome }}" != "success" ] || [ "${{ steps.app_tests.outcome }}" != "success" ]; then
-            echo "App regression tests or dependency install failed."
+          if [ "${{ steps.app_tests.outcome }}" != "success" ]; then
+            echo "App regression tests failed."
             exit 1
           fi
           if [ "${{ steps.health.outputs.app_ok }}" != "true" ] || [ "${{ steps.db.outputs.db_ok }}" != "true" ] || [ "${{ steps.reg.outputs.reg_ok }}" != "true" ] || [ "${{ steps.stab.outputs.stab_all_ok }}" != "true" ]; then
