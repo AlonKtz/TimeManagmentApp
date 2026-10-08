@@ -14,7 +14,7 @@
     "localforage": "^1.10.0",
     "otpauth": "^9.5.0",
     "qrcode": "^1.5.4",
-    "react": "^18.2.0",
+    "react": "^19.3.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
