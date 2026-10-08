@@ -184,8 +184,8 @@ export function buildWorkbook({ ExcelJS, user, entries, settings, year, month, l
   // Always 31 rows so the sheet stays a reusable template. The date + weekday
   // are FORMULAS driven by the שנה/חודש cells (H7/H8): change the month and the
   // whole column recalculates; days past the month's end blank themselves out.
-  // The regular-hours total (col E) is a live formula = (סיום − התחלה); times are
-  // written as real Excel time values so that math works.
+  // Regular-hours totals (col E) use each eligible entry's recorded hours;
+  // columns C/D retain the day's earliest start and latest finish.
   const YEAR_CELL = '$H$7';
   const MONTH_CELL = '$H$8';
   const HEB_WEEKDAY_FORMULA = (a) =>
@@ -318,4 +318,5 @@ export async function exportMonthlyReport({ ExcelJS, user, entries, settings, ye
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
 
