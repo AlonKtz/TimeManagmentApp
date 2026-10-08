@@ -52,17 +52,20 @@ async function loadLogo() {
 function dayRow(entries, date) {
   const key = ymd(date);
   const dayEntries = entries.filter((e) => e.date === key);
+  const workedEntries = dayEntries.filter(
+    (e) => !isDayOffEntry(e) && (e.location === 'office' || e.location === 'home')
+  );
   let decimal = 0;
   const starts = [];
   const ends = [];
   const notes = [];
   for (const e of dayEntries) {
-    decimal += e.hours || 0;
-    if (!isDayOffEntry(e)) {
-      if (e.start) starts.push(e.start);
-      if (e.end) ends.push(e.end);
-    }
     if (e.note) notes.push(e.note);
+  }
+  for (const e of workedEntries) {
+    decimal += Number(e.hours) || 0;
+    if (e.start) starts.push(e.start);
+    if (e.end) ends.push(e.end);
   }
   return {
     hasEntry: dayEntries.length > 0,
@@ -79,8 +82,8 @@ function dayRow(entries, date) {
 export function buildWorkbook({ ExcelJS, user, entries, settings, year, month, logo = null }) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Hour Counter by AK';
-  // Force Excel/Sheets to recalculate every formula on open, so dates, daily
-  // totals and month totals show values immediately (not blank until edited).
+  // Force Excel/Sheets to recalculate formulas on open, so dates, weekdays,
+  // and month totals show values immediately (not blank until edited).
   wb.calcProperties.fullCalcOnLoad = true;
   const ws = wb.addWorksheet(`${HEB_MONTHS[month]} ${year}`, {
     views: [{ rightToLeft: true, showGridLines: false }],
@@ -219,17 +222,13 @@ export function buildWorkbook({ ExcelJS, user, entries, settings, year, month, l
     setCell('A', { formula: `IF(MONTH(${dateExpr})=${MONTH_CELL},${dateExpr},"")`, result: inMonth ? excelSerial(year, month, day) : '' }, { numFmt: '[$-409]d-mmm-yy' });
     setCell('B', { formula: HEB_WEEKDAY_FORMULA(`A${rowIdx}`), result: inMonth ? HEB_DAYS[date.getDay()] : '' });
 
-    // C/D punch in-out (real time values); E regular total = live formula from them.
+    // C/D show the day's outer work times; E sums eligible recorded hours,
+    // so breaks between multiple sessions are not counted as work.
     const startFrac = timeToFrac(r.start);
     const endFrac = timeToFrac(r.end);
     setCell('C', startFrac, { numFmt: 'h:mm' });
     setCell('D', endFrac, { numFmt: 'h:mm' });
-    if (startFrac != null && endFrac != null) {
-      const eResult = Math.round((endFrac - startFrac) * 24 * 100) / 100;
-      totalRegular += eResult;
-      setCell('E', { formula: `IF(AND(C${rowIdx}<>"",D${rowIdx}<>""),(D${rowIdx}-C${rowIdx})*24,"")`, result: eResult }, { numFmt: '0.00' });
-    } else if (r.decimal > 0) {
-      // Leave / manual-hours day: no punch times, so show the hours directly.
+    if (r.decimal > 0) {
       const eVal = Math.round(r.decimal * 100) / 100;
       totalRegular += eVal;
       setCell('E', eVal, { numFmt: '0.00' });
@@ -319,3 +318,4 @@ export async function exportMonthlyReport({ ExcelJS, user, entries, settings, ye
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
