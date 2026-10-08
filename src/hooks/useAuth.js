@@ -139,9 +139,12 @@ export function useAuth() {
   const loadUsers = async () => {
     try {
       const rows = await sb.select('profiles', 'order=created_at.asc');
-      setUsersState(rows.map(normalizeProfile));
+      const normalized = rows.map(normalizeProfile);
+      setUsersState(normalized);
+      return normalized;
     } catch (e) {
       console.error('[auth] loadUsers:', e);
+      return null;
     }
   };
 
@@ -216,3 +219,4 @@ export function useAuth() {
     rejectUser,
   };
 }
+
