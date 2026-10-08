@@ -1,3 +1,5 @@
+import { buildSelectQuery, validateBody, validateConflictColumns, validateDeleteList, validateMatch, validateTable } from './restQuery';
+
 const SUPABASE_URL = 'https://yxmbammlzweasjvpouqn.supabase.co';
 const SUPABASE_ANON =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4bWJhbW1sendlYXNqdnBvdXFuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwOTg0MjgsImV4cCI6MjA5MjY3NDQyOH0.JZfWJcSyGWVQhj2OScCzTpLvEpVly6IQSXfcKQI-YI0';
@@ -81,8 +83,11 @@ const sb = {
   },
 
   // ── Generic REST helpers ─────────────────────────────────────────────────
-  async select(table, params = '') {
-    const r = await this._req(`select ${table}`, `${this._url}/rest/v1/${table}?${params}`, {
+  async select(table, query = {}) {
+    validateTable(table);
+    const params = buildSelectQuery(table, query);
+    const suffix = params ? `?${params}` : '';
+    const r = await this._req(`select ${table}`, `${this._url}/rest/v1/${table}${suffix}`, {
       headers: this.headers({ Prefer: 'return=representation' }),
     });
     if (!r.ok) {
@@ -94,6 +99,10 @@ const sb = {
   // Call a Postgres function (RPC). Used for anon-safe checks that RLS would
   // otherwise block (e.g. email_exists against auth.users).
   async rpc(fn, args = {}) {
+    if (fn !== 'email_exists') throw new TypeError(`Unsupported RPC: ${fn}`);
+    if (!args || Object.keys(args).some((key) => key !== 'p_email') || typeof args.p_email !== 'string') {
+      throw new TypeError('Invalid RPC arguments');
+    }
     const r = await this._req(`rpc ${fn}`, `${this._url}/rest/v1/rpc/${fn}`, {
       method: 'POST',
       headers: this.headers(),
@@ -106,7 +115,10 @@ const sb = {
     return r.json();
   },
   async upsert(table, body, onConflict) {
-    const qs = onConflict ? `?on_conflict=${onConflict}` : '';
+    validateTable(table);
+    validateBody(table, body);
+    const conflict = onConflict ? validateConflictColumns(table, onConflict) : '';
+    const qs = conflict ? `?on_conflict=${encodeURIComponent(conflict)}` : '';
     const r = await this._req(`upsert ${table}`, `${this._url}/rest/v1/${table}${qs}`, {
       method: 'POST',
       headers: this.headers({ Prefer: 'resolution=merge-duplicates,return=representation' }),
@@ -119,8 +131,11 @@ const sb = {
     return r.json();
   },
   async update(table, body, matchCol, matchVal) {
+    validateTable(table);
+    validateBody(table, body);
+    const match = validateMatch(table, matchCol, matchVal);
     const r = await this._req(`update ${table}`,
-      `${this._url}/rest/v1/${table}?${matchCol}=eq.${encodeURIComponent(matchVal)}`,
+      `${this._url}/rest/v1/${table}?${match.column}=eq.${encodeURIComponent(match.value)}`,
       {
         method: 'PATCH',
         headers: this.headers({ Prefer: 'return=representation' }),
@@ -134,8 +149,10 @@ const sb = {
     return r.json();
   },
   async delete(table, matchCol, matchVal) {
+    validateTable(table);
+    const match = validateMatch(table, matchCol, matchVal);
     const r = await this._req(`delete ${table}`,
-      `${this._url}/rest/v1/${table}?${matchCol}=eq.${encodeURIComponent(matchVal)}`,
+      `${this._url}/rest/v1/${table}?${match.column}=eq.${encodeURIComponent(match.value)}`,
       { method: 'DELETE', headers: this.headers() }
     );
     if (!r.ok) {
@@ -145,8 +162,10 @@ const sb = {
   },
   async deleteMulti(table, col, vals) {
     if (!vals.length) return;
-    const list = vals.map((v) => encodeURIComponent(v)).join(',');
-    const r = await this._req(`deleteMulti ${table}`, `${this._url}/rest/v1/${table}?${col}=in.(${list})`, {
+    validateTable(table);
+    const filter = validateDeleteList(table, col, vals);
+    const params = new URLSearchParams({ [col]: filter });
+    const r = await this._req(`deleteMulti ${table}`, `${this._url}/rest/v1/${table}?${params}`, {
       method: 'DELETE',
       headers: this.headers(),
     });

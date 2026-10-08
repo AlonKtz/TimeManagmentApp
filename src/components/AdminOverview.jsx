@@ -29,7 +29,12 @@ export default function AdminOverview({ users, currentUser, auth }) {
       if (ids.length) {
         rows = await sb.select(
           'time_entries',
-          `select=user_id,date,hours,note,mode&user_id=in.(${ids.join(',')})&date=gte.${weekStart(new Date())}&date=lte.${today}&order=date.desc`
+          {
+            select: 'user_id,date,hours,note,mode',
+            user_id: { in: ids },
+            date: [{ gte: weekStart(new Date()) }, { lte: today }],
+            order: 'date.desc',
+          }
         );
       }
       setEntries(rows);

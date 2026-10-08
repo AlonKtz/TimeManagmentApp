@@ -161,7 +161,7 @@ export default function App() {
     try {
       const rows = await sb.select(
         'time_entries',
-        `user_id=eq.${user.id}&order=date.desc,created_at.desc`
+        { user_id: { eq: user.id }, order: 'date.desc,created_at.desc' }
       );
       const normalized = rows.map(normalizeEntry);
       setEntriesState(normalized);
@@ -177,11 +177,11 @@ export default function App() {
 
   const loadSettings = async () => {
     try {
-      const rows = await sb.select('settings', '');
+      const rows = await sb.select('settings');
       const map = {};
       for (const r of rows) map[r.key] = r.value;
 
-      const ovRows = await sb.select('day_overrides', 'order=date.asc');
+      const ovRows = await sb.select('day_overrides', { order: 'date.asc' });
       const overrides = {};
       const disabledHolidays = [];
       for (const r of ovRows) {
@@ -206,7 +206,7 @@ export default function App() {
   const loadPunchState = async () => {
     if (!user) return;
     try {
-      const rows = await sb.select('profiles', `id=eq.${user.id}&select=punch_state`);
+      const rows = await sb.select('profiles', { id: { eq: user.id }, select: 'punch_state' });
       const serverPunch = rows[0]?.punch_state;
       if (serverPunch?.start) {
         setActivePunchState(serverPunch);
@@ -315,7 +315,7 @@ export default function App() {
         'key'
       );
 
-      const existing = await sb.select('day_overrides', 'select=date');
+      const existing = await sb.select('day_overrides', { select: 'date' });
       const existingDates = existing.map((r) => r.date);
 
       // Build desired rows — overrides TAKE PRECEDENCE over disabledHolidays

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import sb from '../lib/supabase';
 import { loadToken, saveToken, savePunch } from '../utils/storage';
 import { touchLastActive } from '../lib/activity';
+import { submitSignup } from '../lib/signup';
 
 // Map DB profile row (snake_case) → app-friendly object
 function normalizeProfile(p) {
@@ -52,13 +53,13 @@ export function useAuth() {
 
   const refreshProfile = async (userId) => {
     try {
-      const rows = await sb.select('profiles', `id=eq.${userId}`);
+      const rows = await sb.select('profiles', { id: { eq: userId } });
       if (rows[0]) {
         setCurrentUser(normalizeProfile(rows[0]));
       } else {
         // Profile not yet created by trigger — retry once after a short delay
         await new Promise((r) => setTimeout(r, 1500));
-        const rows2 = await sb.select('profiles', `id=eq.${userId}`);
+        const rows2 = await sb.select('profiles', { id: { eq: userId } });
         if (rows2[0]) setCurrentUser(normalizeProfile(rows2[0]));
       }
       // Stamp last activity (resets daily idle metric for admin)
@@ -71,27 +72,9 @@ export function useAuth() {
 
   // ── register ─────────────────────────────────────────────────────────────
   const register = async ({ email, password, name }) => {
-    email = (email || '').trim().toLowerCase();
-    name  = (name  || '').trim();
-    if (!email || !password || !name) return { error: 'נא למלא את כל השדות' };
-    if (password.length < 6) return { error: 'הסיסמה חייבת להיות לפחות 6 תווים' };
-    const emailOk = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email);
-    if (!emailOk) return { error: 'כתובת האימייל אינה תקינה (דוגמה: user@company.com)' };
-
-    const res = await sb.signUp(email, password, name);
-    const signupError = res.error?.message || res.error || res.msg || res.message;
-    if (signupError) {
-      const message = String(signupError);
-      if (/already registered|user_already_exists/i.test(message)) {
-        return { error: 'כתובת האימייל כבר רשומה. התחבר במקום ליצור חשבון חדש.' };
-      }
-      return { error: message };
-    }
-
-    if (!res.access_token || !res.user?.id) {
-      return { error: 'ההרשמה לא הושלמה. נסה להתחבר אם כבר יש לך חשבון.' };
-    }
-
+    const result = await submitSignup({ email, password, name, signUp: (...args) => sb.signUp(...args) });
+    if (result.error) return result;
+    const res = result.session;
     sb._token = res.access_token;
     saveToken({ access_token: res.access_token, refresh_token: res.refresh_token });
     await refreshProfile(res.user.id);
@@ -147,7 +130,7 @@ export function useAuth() {
   // ── Admin: load all profiles ──────────────────────────────────────────────
   const loadUsers = async () => {
     try {
-      const rows = await sb.select('profiles', 'order=created_at.asc');
+      const rows = await sb.select('profiles', { order: 'created_at.asc' });
       const normalized = rows.map(normalizeProfile);
       setUsersState(normalized);
       return normalized;
