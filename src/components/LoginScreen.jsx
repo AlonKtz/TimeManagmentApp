@@ -22,7 +22,6 @@ export default function LoginScreen({ auth }) {
       } else {
         const res = await auth.register({ email, password, name });
         if (res.error)         { setError(res.error); return; }
-        if (res.needsConfirm)  { setInfo('נשלח אימייל אישור. בדוק את תיבת הדואר ולחץ על הקישור.'); return; }
       }
     } finally {
       setLoading(false);

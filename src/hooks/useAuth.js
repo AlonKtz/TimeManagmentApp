@@ -79,14 +79,23 @@ export function useAuth() {
     if (!emailOk) return { error: 'כתובת האימייל אינה תקינה (דוגמה: user@company.com)' };
 
     const res = await sb.signUp(email, password, name);
-    if (res.error) return { error: res.error.message || String(res.error) };
-
-    if (res.access_token) {
-      sb._token = res.access_token;
-      saveToken({ access_token: res.access_token, refresh_token: res.refresh_token });
-      await refreshProfile(res.user.id);
+    const signupError = res.error?.message || res.error || res.msg || res.message;
+    if (signupError) {
+      const message = String(signupError);
+      if (/already registered|user_already_exists/i.test(message)) {
+        return { error: 'כתובת האימייל כבר רשומה. התחבר במקום ליצור חשבון חדש.' };
+      }
+      return { error: message };
     }
-    return { ok: true, needsConfirm: !res.access_token };
+
+    if (!res.access_token || !res.user?.id) {
+      return { error: 'ההרשמה לא הושלמה. נסה להתחבר אם כבר יש לך חשבון.' };
+    }
+
+    sb._token = res.access_token;
+    saveToken({ access_token: res.access_token, refresh_token: res.refresh_token });
+    await refreshProfile(res.user.id);
+    return { ok: true };
   };
 
   // ── login ────────────────────────────────────────────────────────────────
