@@ -337,9 +337,9 @@ jobs:
           SECURITY_STATUS:  ${{ steps.security.outputs.security_status }}
           SECURITY_ERROR:   ${{ steps.security.outputs.security_error }}
           FAILED_SIGNINS:   ${{ steps.security.outputs.failed_signins }}
-          REPEAT_FAILURE_SOURCES: ${{ steps.security.outputs.repeat_failure_sources }}
+          FAILED_SIGNIN_SOURCES: ${{ steps.security.outputs.failed_signin_sources }}
           RATE_LIMITED_REQUESTS: ${{ steps.security.outputs.rate_limited_requests }}
-          REPEAT_RATE_LIMIT_SOURCES: ${{ steps.security.outputs.repeat_rate_limit_sources }}
+          RATE_LIMITED_SOURCES: ${{ steps.security.outputs.rate_limited_sources }}
           API_5XX:           ${{ steps.security.outputs.api_5xx }}
           DB_ERRORS:         ${{ steps.security.outputs.db_errors }}
           PERMISSION_DENIALS: ${{ steps.security.outputs.permission_denials }}
@@ -415,7 +415,7 @@ jobs:
           problems = []
           if sec_status == 'review':
               problems.append(('Security activity needs review',
-                               f"{v('FAILED_SIGNINS')} failed sign-ins · {v('REPEAT_FAILURE_SOURCES')} source(s) with 10+ failures · {v('RATE_LIMITED_REQUESTS')} rate-limited requests"))
+                               f"{v('FAILED_SIGNINS')} failed sign-ins from {v('FAILED_SIGNIN_SOURCES')} source(s) · {v('RATE_LIMITED_REQUESTS')} rate-limited requests from {v('RATE_LIMITED_SOURCES')} source(s)"))
           elif sec_status == 'not_configured':
               problems.append(('Security logs are not connected',
                                'Add the project-scoped read-only SUPABASE_ACCESS_TOKEN secret in GitHub Actions settings.'))
@@ -585,9 +585,9 @@ jobs:
                 {card("🛡️ Supabase security activity (24h)", [
                     ("Scan status", security_badge, False),
                     ("Failed sign-in requests", num(v("FAILED_SIGNINS")), False),
-                    ("Sources with 10+ failed sign-ins", num(v("REPEAT_FAILURE_SOURCES")), False),
+                    ("Sources with failed sign-ins", num(v("FAILED_SIGNIN_SOURCES")), False),
                     ("Rate-limited requests", num(v("RATE_LIMITED_REQUESTS")), False),
-                    ("Sources with 10+ rate limits", num(v("REPEAT_RATE_LIMIT_SOURCES")), False),
+                    ("Sources with rate-limited requests", num(v("RATE_LIMITED_SOURCES")), False),
                     ("API 5xx responses", num(v("API_5XX")), False),
                     ("Database permission denials", num(v("PERMISSION_DENIALS")), False),
                     ("Other database errors", num(v("DB_ERRORS")), False),
