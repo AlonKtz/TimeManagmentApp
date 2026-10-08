@@ -12,7 +12,8 @@
 
 import { HEB_DAYS, HEB_MONTHS } from '../constants';
 import { ymd } from './date';
-import { getPersonalRangeStats, isDayOffEntry } from './business';
+import { getPersonalRangeStats } from './business';
+import { summarizeWorkdayEntries } from './workedHours';
 
 const stripZero = (t) => (t ? String(t).replace(/^0(\d)/, '$1') : '');
 // Excel date serial (days since 1899-12-30), computed in UTC so it never picks
@@ -51,30 +52,7 @@ async function loadLogo() {
 // Aggregate one calendar day's entries into a single report row.
 function dayRow(entries, date) {
   const key = ymd(date);
-  const dayEntries = entries.filter((e) => e.date === key);
-  const workedEntries = dayEntries.filter(
-    (e) => !isDayOffEntry(e) && (e.location === 'office' || e.location === 'home')
-  );
-  let decimal = 0;
-  const starts = [];
-  const ends = [];
-  const notes = [];
-  for (const e of dayEntries) {
-    if (e.note) notes.push(e.note);
-  }
-  for (const e of workedEntries) {
-    decimal += Number(e.hours) || 0;
-    if (e.start) starts.push(e.start);
-    if (e.end) ends.push(e.end);
-  }
-  return {
-    hasEntry: dayEntries.length > 0,
-    // earliest start / latest end across the day's sessions
-    start: starts.length ? stripZero(starts.slice().sort()[0]) : '',
-    end:   ends.length ? stripZero(ends.slice().sort().at(-1)) : '',
-    decimal,
-    note: [...new Set(notes)].join(' · '),
-  };
+  return summarizeWorkdayEntries(entries.filter((entry) => entry.date === key));
 }
 
 // Pure workbook builder — no browser globals, so it can be exercised in Node.

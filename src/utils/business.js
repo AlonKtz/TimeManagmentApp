@@ -1,5 +1,5 @@
-import { ISRAELI_HOLIDAYS, HOLIDAY_TYPES } from '../constants';
-import { ymd, daysInRange } from './date';
+import { ISRAELI_HOLIDAYS, HOLIDAY_TYPES } from '../constants.js';
+import { ymd, daysInRange } from './date.js';
 
 // Leave / absence types. All book a full standard day (same target logic) —
 // the app tracks presence, not payroll, so vacation/sick/reserve differ only

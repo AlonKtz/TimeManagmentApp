@@ -9,6 +9,8 @@ jobs:
   qa:
     runs-on: ubuntu-latest
     env:
+      USER_GOAL: "50"
+      GOAL_YEAR: "2026"
       # Public anon key (same one shipped in the client bundle) — the QA bot uses
       # anon-callable RPCs (qa_stats / qa_cleanup_selftest), so it no longer needs
       # the service_role key at all.
@@ -16,6 +18,28 @@ jobs:
       SB_ANON: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4bWJhbW1sendlYXNqdnBvdXFuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwOTg0MjgsImV4cCI6MjA5MjY3NDQyOH0.JZfWJcSyGWVQhj2OScCzTpLvEpVly6IQSXfcKQI-YI0
     steps:
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        id: deps
+        continue-on-error: true
+        run: npm ci --no-audit --no-fund
+
+      - name: App behavior regression tests
+        id: app_tests
+        if: steps.deps.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set +e
+          npm test 2>&1 | tee /tmp/app-tests.log
+          TEST_EXIT=${PIPESTATUS[0]}
+          set -e
+          tail -n 20 /tmp/app-tests.log >> "$GITHUB_STEP_SUMMARY"
+          exit "$TEST_EXIT"
       # ── 1. Live health + perf ──────────────────────────────────────────────
       - name: Check app is live
         id: health
@@ -244,8 +268,13 @@ jobs:
 
       # ── 4. Send email ──────────────────────────────────────────────────────
       - name: Send email summary
+        if: always()
         env:
           RESEND_API_KEY:   ${{ secrets.RESEND_API_KEY }}
+          APP_TESTS_OUTCOME: ${{ steps.app_tests.outcome }}
+          DEPS_OUTCOME:      ${{ steps.deps.outcome }}
+          USER_GOAL:         ${{ env.USER_GOAL }}
+          GOAL_YEAR:         ${{ env.GOAL_YEAR }}
           APP_OK:           ${{ steps.health.outputs.app_ok }}
           HTTP_STATUS:      ${{ steps.health.outputs.status }}
           RESPONSE_MS:      ${{ steps.health.outputs.response_ms }}
@@ -290,9 +319,36 @@ jobs:
 
           app_ok    = v('APP_OK') == 'true'
           db_ok     = v('DB_OK').lower() == 'true'   # bash echoes lowercase
-          today     = __import__('datetime').date.today().strftime('%d/%m/%Y')
+          today_date = __import__('datetime').date.today()
+          today     = today_date.strftime('%d/%m/%Y')
 
-          hdr_color = '#0f766e' if app_ok else '#dc2626'
+          tests_ok = v('APP_TESTS_OUTCOME') == 'success' and v('DEPS_OUTCOME') == 'success'
+          tests_badge = '✅ PASS' if tests_ok else f'🔴 FAIL ({v("APP_TESTS_OUTCOME")})'
+
+          goal = int(v('USER_GOAL') or 50)
+          goal_year = int(v('GOAL_YEAR') or 2026)
+          try:
+              total_users = int(v('TOTAL_USERS'))
+              remaining_users = max(0, goal - total_users)
+              progress_pct = min(100, round(total_users * 100 / goal)) if goal else 0
+              goal_user_text = f'{total_users} / {goal} ({progress_pct}%)'
+              goal_color = '#16a34a' if total_users >= goal else '#7c3aed'
+              year_end = __import__('datetime').date(goal_year, 12, 31)
+              days_left = max(0, (year_end - today_date).days)
+              if remaining_users == 0:
+                  goal_pace = 'goal reached'
+              elif days_left:
+                  goal_pace = f'{remaining_users} to go · ~{remaining_users * 7 / days_left:.1f} net users/week needed'
+              else:
+                  goal_pace = f'{remaining_users} still needed · deadline passed'
+          except (ValueError, TypeError):
+              total_users = None
+              remaining_users = None
+              goal_user_text = f'N/A / {goal}'
+              goal_color = '#dc2626'
+              goal_pace = 'user count unavailable'
+
+          hdr_color = '#0f766e' if app_ok and tests_ok else '#dc2626'
           app_badge = '✅ LIVE' if app_ok else '🔴 DOWN'
           db_badge  = '✅ OK'   if db_ok  else '🔴 ERR'
 
@@ -321,6 +377,8 @@ jobs:
               problems.append(('DB read error', err_reason))
           if not reg_ok:
               problems.append(('Registration self-test failed', v('REG_REASON') or 'unknown'))
+          if not tests_ok:
+              problems.append(('App behavior regression failed', f'dependencies {v("DEPS_OUTCOME")} · tests {v("APP_TESTS_OUTCOME")} · see run {__import__("os").environ.get("GITHUB_SERVER_URL", "https://github.com")}/{__import__("os").environ.get("GITHUB_REPOSITORY", "AlonKtz/TimeManagmentApp")}/actions/runs/{__import__("os").environ.get("GITHUB_RUN_ID", "")}'))
           if not stab_ok:
               problems.append(('Stability check failed',
                                f"JS {'ok' if v('JS_OK')=='true' else 'DOWN'} · version.json {'ok' if v('VER_OK')=='true' else 'DOWN'} · auth {'ok' if v('AUTH_OK')=='true' else 'DOWN'}"))
@@ -421,7 +479,7 @@ jobs:
                 {kpi(f"{v('BUNDLE_KB')} KB", "Bundle size", "#1c1917", v('ENCODING'))}
                 {kpi(f"{v('RESPONSE_MS')}ms", "Response time", "#2563eb")}
                 {kpi(f"{v('RUN_PASS')}/{int(v('RUN_PASS') or 0)+int(v('RUN_FAIL') or 0)}", "CI pass rate", ci_color, "last 10 runs")}
-                {kpi(num(v('TOTAL_USERS')), "DB users", "#dc2626" if v('TOTAL_USERS') == 'ERR' else "#7c3aed", f"{num(v('ACTIVE_7D'))} active in 7d" if v('ACTIVE_7D') != 'N/A' else "")}
+                {kpi(goal_user_text, "users / year-end goal", goal_color, goal_pace)}
               </tr>
             </table>
 
@@ -459,7 +517,8 @@ jobs:
                 </td>
                 <td width="49%" style="vertical-align:top;padding-right:7px">
                   {card("🗄️ Database", [
-                      ("Users", num(v("TOTAL_USERS")), False),
+                      ("Users / year-end target", goal_user_text, True),
+                      ("Required net pace", goal_pace, False),
                       ("Admins", num(v("ADMINS")), False),
                       ("Active (last 7 days)", num(v("ACTIVE_7D")), True),
                       ("Slow queries >2.5s (24h)", slow_badge, False),
@@ -471,6 +530,16 @@ jobs:
               </tr>
             </table>
 
+            <!-- App behavior checks -->
+            <table width="100%" style="border-collapse:collapse;margin-bottom:14px">
+              <tr><td>
+                {card("🧪 Work-hours export regression", [
+                    ("Result", f'<span style="color:{"#16a34a" if tests_ok else "#dc2626"};font-weight:700">{tests_badge}</span>', False),
+                    ("Rules", "office/home work only · leave excluded · split sessions summed", False),
+                    ("Test command", "npm test", False),
+                  ])}
+              </td></tr>
+            </table>
             <!-- QA self-tests + stability -->
             <table width="100%" style="border-collapse:collapse;margin-bottom:14px">
               <tr>
@@ -520,10 +589,10 @@ jobs:
           </div>
           """
 
-          all_ok = app_ok and db_ok and reg_ok and stab_ok
+          all_ok = app_ok and db_ok and reg_ok and stab_ok and tests_ok
           subject = (
               f"[{'OK' if all_ok else 'ISSUE'}] Hour Counter Dev QA {today} — "
-              f"reg {'OK' if reg_ok else 'FAIL'} · stability {'OK' if stab_ok else 'FAIL'} · "
+              f"tests {'OK' if tests_ok else 'FAIL'} · reg {'OK' if reg_ok else 'FAIL'} · stability {'OK' if stab_ok else 'FAIL'} · "
               f"{v('RESPONSE_MS')}ms · CI {v('RUN_PASS')}/{int(v('RUN_PASS') or 0)+int(v('RUN_FAIL') or 0)}"
           )
 
@@ -541,3 +610,14 @@ jobs:
             -H "Authorization: Bearer $RESEND_API_KEY" \
             -H "Content-Type: application/json" \
             --data-binary @/tmp/email_payload.json
+      - name: Fail the run when core checks fail
+        if: always()
+        run: |
+          if [ "${{ steps.deps.outcome }}" != "success" ] || [ "${{ steps.app_tests.outcome }}" != "success" ]; then
+            echo "App regression tests or dependency install failed."
+            exit 1
+          fi
+          if [ "${{ steps.health.outputs.app_ok }}" != "true" ] || [ "${{ steps.db.outputs.db_ok }}" != "true" ] || [ "${{ steps.reg.outputs.reg_ok }}" != "true" ] || [ "${{ steps.stab.outputs.stab_all_ok }}" != "true" ]; then
+            echo "A production health check failed."
+            exit 1
+          fi
