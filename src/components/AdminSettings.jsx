@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { HEB_DAYS, HOLIDAY_TYPES, ISRAELI_HOLIDAYS, DEFAULT_SETTINGS } from '../constants';
 import { ymd, parseYmd, fmtHours } from '../utils/date';
 import { ITrash, IPlus } from './icons';
+import AdminOverview from './AdminOverview';
 
 // Human-friendly "מלפני 5 דקות" / "אתמול" / etc. with full-date fallback
 function timeAgoHe(iso) {
@@ -164,6 +165,8 @@ export default function AdminSettings({ settings, setSettings, users, currentUse
           <div className="topbar2-title">הגדרות וניהול</div>
         </div>
       </div>
+
+      <AdminOverview users={users} currentUser={currentUser} auth={auth} />
 
       {flash.msg && (
         <div style={{
@@ -613,3 +616,4 @@ export default function AdminSettings({ settings, setSettings, users, currentUse
     </div>
   );
 }
+
