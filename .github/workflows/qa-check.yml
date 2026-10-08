@@ -2,11 +2,32 @@ name: QA Daily Check
 
 on:
   schedule:
-    - cron: '0 6 * * *'
+    # GitHub schedules use UTC. Cover both Jerusalem UTC offsets; the gate below
+    # lets QA proceed only when the local time is 06:00.
+    - cron: '0 3 * * *'
+    - cron: '0 4 * * *'
   workflow_dispatch:
 
 jobs:
+  schedule_gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run_qa: ${{ steps.local_time.outputs.run_qa }}
+    steps:
+      - name: Check whether it is 06:00 in Jerusalem
+        id: local_time
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          local_now = datetime.now(ZoneInfo("Asia/Jerusalem"))
+          print(f"Jerusalem local time: {local_now.isoformat()}")
+          print(f"run_qa={'true' if local_now.hour == 6 else 'false'}")
+          PY
+
   qa:
+    needs: schedule_gate
+    if: github.event_name != 'schedule' || needs.schedule_gate.outputs.run_qa == 'true'
     runs-on: ubuntu-latest
     env:
       USER_GOAL: "50"
