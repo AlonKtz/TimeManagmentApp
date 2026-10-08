@@ -14,7 +14,7 @@ export default function TwoFactorSetup({ user, onSave, onClose }) {
     const s = new OTPAuth.Secret({ size: 20 });
     const base32 = s.base32;
     const totp = new OTPAuth.TOTP({
-      issuer: 'Hour Counter by AK',
+      issuer: 'Timey',
       label: user.username,
       algorithm: 'SHA1',
       digits: 6,

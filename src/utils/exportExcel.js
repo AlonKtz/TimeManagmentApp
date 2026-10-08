@@ -59,7 +59,7 @@ function dayRow(entries, date) {
 // `logo` is an optional pre-loaded { buffer, extension }.
 export function buildWorkbook({ ExcelJS, user, entries, settings, year, month, logo = null }) {
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'Hour Counter by AK';
+  wb.creator = 'Timey';
   // Force Excel/Sheets to recalculate formulas on open, so dates, weekdays,
   // and month totals show values immediately (not blank until edited).
   wb.calcProperties.fullCalcOnLoad = true;

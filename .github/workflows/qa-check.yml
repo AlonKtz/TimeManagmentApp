@@ -26,7 +26,6 @@ jobs:
         with:
           node-version: 20
 
-
       - name: App behavior regression tests
         id: app_tests
         continue-on-error: true
@@ -440,7 +439,7 @@ jobs:
               <tr><td style="padding:20px 24px">
                 <div style="font-size:11px;color:rgba(255,255,255,.65);letter-spacing:.5px;
                             text-transform:uppercase;margin-bottom:3px">Dev QA · {today}</div>
-                <div style="font-size:22px;font-weight:700;color:#fff">⏱ Hour Counter</div>
+                <div style="font-size:22px;font-weight:700;color:#fff">⏱ Timey</div>
                 <table style="margin-top:12px;border-collapse:collapse">
                   <tr>
                     <td style="background:rgba(255,255,255,.18);border-radius:7px;
@@ -574,7 +573,7 @@ jobs:
             <table width="100%" style="border-collapse:collapse">
               <tr><td style="text-align:center;padding:12px;font-size:12px;color:#a8a29e">
                 <a href="https://alonktz.github.io/TimeManagmentApp/"
-                   style="color:#0f766e;text-decoration:none;font-weight:600">Open Hour Counter ↗</a>
+                   style="color:#0f766e;text-decoration:none;font-weight:600">Open Timey ↗</a>
                 &nbsp;·&nbsp;
                 <a href="https://github.com/AlonKtz/TimeManagmentApp/actions"
                    style="color:#78716c;text-decoration:none">GitHub Actions ↗</a>
@@ -587,7 +586,7 @@ jobs:
 
           all_ok = app_ok and db_ok and reg_ok and stab_ok and tests_ok
           subject = (
-              f"[{'OK' if all_ok else 'ISSUE'}] Hour Counter Dev QA {today} — "
+              f"[{'OK' if all_ok else 'ISSUE'}] Timey QA {today} — "
               f"tests {'OK' if tests_ok else 'FAIL'} · reg {'OK' if reg_ok else 'FAIL'} · stability {'OK' if stab_ok else 'FAIL'} · "
               f"{v('RESPONSE_MS')}ms · CI {v('RUN_PASS')}/{int(v('RUN_PASS') or 0)+int(v('RUN_FAIL') or 0)}"
           )

@@ -144,7 +144,7 @@ export default function Sidebar({ tab, setTab, user, onLogout, working, pendingC
             <IClock style={{ width: 22, height: 22 }} />
           </div>
           <div className="sidebar-brand-text">
-            <strong>Hour Counter <span style={{ fontWeight: 500 }}>by AK</span></strong>
+            <strong>Timey</strong>
             <span className={working ? 'live' : ''}>
               {working ? 'בעבודה כרגע' : 'שעות עבודה'}
             </span>
