@@ -20,12 +20,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install locked dependencies
@@ -33,6 +33,9 @@ jobs:
 
       - name: Run regression tests
         run: npm test
+
+      - name: Build production app
+        run: npm run build
 
       - name: Report dependency advisories and fail on high or critical findings
         run: npm audit --audit-level=high
@@ -42,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
