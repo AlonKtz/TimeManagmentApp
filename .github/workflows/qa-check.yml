@@ -14,15 +14,24 @@ jobs:
     outputs:
       run_qa: ${{ steps.local_time.outputs.run_qa }}
     steps:
-      - name: Check whether it is 06:00 in Jerusalem
+      - name: Check scheduled cron for 06:00 Jerusalem time
         id: local_time
+        env:
+          SCHEDULE_CRON: ${{ github.event.schedule }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import os
           from datetime import datetime
           from zoneinfo import ZoneInfo
+
           local_now = datetime.now(ZoneInfo("Asia/Jerusalem"))
+          offset_hours = int(local_now.utcoffset().total_seconds() // 3600)
+          expected_cron = "0 3 * * *" if offset_hours == 3 else "0 4 * * *"
+          scheduled_cron = os.environ.get("SCHEDULE_CRON", "")
           print(f"local_time={local_now.isoformat()}")
-          print(f"run_qa={'true' if local_now.hour == 6 else 'false'}")
+          print(f"scheduled_cron={scheduled_cron}")
+          print(f"expected_cron={expected_cron}")
+          print(f"run_qa={'true' if scheduled_cron == expected_cron else 'false'}")
           PY
 
   qa:
