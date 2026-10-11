@@ -12,13 +12,13 @@
   "dependencies": {
     "exceljs": "^4.4.0",
     "localforage": "^1.10.0",
-    "otpauth": "^9.5.0",
+    "otpauth": "^9.5.2",
     "qrcode": "^1.5.4",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.7.0",
-    "vite": "^6.4.4"
+    "@vitejs/plugin-react": "^6.1.2",
+    "vite": "^8.3.2"
   }
 }
